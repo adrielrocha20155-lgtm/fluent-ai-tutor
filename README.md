@@ -58,8 +58,8 @@ Plataforma interativa de tutoria de inglês em tempo real por voz, inspirada em 
 
 ### 1. Clonar o repositório
 ```bash
-git clone <url-do-seu-repositorio>
-cd immersive-language-learning-with-live-api
+git clone https://github.com/adrielrocha20155-lgtm/fluent-ai-tutor.git
+cd fluent-ai-tutor
 ```
 
 ### 2. Configurar variáveis de ambiente
