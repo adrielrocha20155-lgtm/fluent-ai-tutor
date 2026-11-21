@@ -1,69 +1,69 @@
-# FluentAI — Tutor de Inglês 1-on-1 Adaptativo (Gemini Live API)
+# FluentAI — Adaptive 1-on-1 English Tutor (Gemini Live API)
 
-Plataforma interativa de tutoria de inglês em tempo real por voz, inspirada em aulas particulares estilo **Preply**, fundamentada nas metodologias **CLT, PPP, ESA, TBL** e nos pilares de **Stephen Krashen** (*Comprehensible Input $i+1$* e *Filtro Afetivo*).
-
----
-
-## Visão Geral & Recursos Principais
-
-- **Tutoria por Voz em Tempo Real (Gemini Live API)**: Conversação full-duplex de baixa latência via WebSocket com áudio nativo e transcrição ao vivo recolhível.
-- **Currículo Estruturado CEFR (A1 ao C2)**: 60 aulas progressivas organizadas por nível (`A1` a `C2`) e módulos (*Grammar & Foundation*, *Functional Communication*, *Fluency & Pragmatics*), com foco aprofundado a partir do nível A2.
-- **Prática Livre / Roleplay**: Crie qualquer cenário personalizado (entrevista de TI, viagens, reuniões técnicas, conversa casual) mantendo a condução pedagógica do professor.
-- **Loop Adaptativo & Banco de Dados (SQLite)**:
-  - Toda aula gera um relatório estruturado pós-sessão (*O que você fez bem*, comparativo *"Você disse" vs. "Forma natural"*, tarefa de 5 minutos e tags de dificuldade).
-  - A IA estima continuamente seu nível CEFR (`0–100`) e injeta seus pontos fracos recorrentes no prompt da próxima aula.
-- **Flashcards com Revisão Espaçada (Estilo Anki / SM-2)**:
-  - Geração automática de flashcards de recordação ativa a partir dos seus erros reais salvos no SQLite, com algoritmo SM-2 (*Errei*, *Difícil*, *Bom*, *Fácil*).
+An interactive, real-time voice English tutoring platform inspired by **Preply**, built on **CLT, PPP, ESA, TBL** methodologies and **Stephen Krashen's** Second Language Acquisition principles (*Comprehensible Input $i+1$* and *Affective Filter*).
 
 ---
 
-## Stack & Arquitetura
+## Overview & Key Features
 
-- **Frontend**: Vanilla JavaScript (Web Components), Vite, Web Audio API, WebSockets, CSS Design System próprio (Dark/Light mode).
-- **Backend**: Python 3.10+, FastAPI, Uvicorn, `google-genai` SDK, SQLite (`data/learning.db` criado automaticamente em tempo de execução).
+- **Real-Time Voice Tutoring (Gemini Live API)**: Low-latency, full-duplex WebSocket voice coaching with native audio streaming and a collapsible live transcript.
+- **Structured CEFR Curriculum (A1 to C2)**: 60 progressive lessons organized by CEFR level (`A1`–`C2`) and module (*Grammar & Foundation*, *Functional Communication*, *Fluency & Pragmatics*), with deep coverage from A2 onward.
+- **Open Conversation / Roleplay**: Practice any custom scenario (IT job interviews, travel, technical meetings, casual chat) while keeping the structured tutor persona active.
+- **Adaptive Learning Loop & SQLite Persistence**:
+  - Every lesson generates a structured post-session report (*What You Did Well*, *"You Said" vs. "Natural Form"* comparisons, 5-minute homework, and focus tags).
+  - The AI continuously updates your estimated CEFR level (`0–100`) and injects your recurring weak areas into the next lesson's system prompt.
+- **Spaced-Repetition Flashcards (Anki-Style SM-2)**:
+  - Automatically generates active-recall flashcards from your real speaking mistakes stored in SQLite, scheduled with the SM-2 algorithm (*Again*, *Hard*, *Good*, *Easy*).
+
+---
+
+## Tech Stack & Project Structure
+
+- **Frontend**: Vanilla JavaScript (Web Components), Vite, Web Audio API, WebSockets, custom CSS Design System (Dark/Light mode).
+- **Backend**: Python 3.10+, FastAPI, Uvicorn, `google-genai` SDK, SQLite (`data/learning.db` auto-created at runtime).
 
 ```text
 .
-├── index.html                  # Entrada HTML
-├── start-app.bat               # Atalho de inicialização rápida (Windows)
-├── requirements.txt            # Dependências Python
-├── package.json                # Dependências Frontend (Vite)
-├── .env.example                # Modelo de variáveis de ambiente
+├── index.html                  # HTML entry point
+├── start-app.bat               # One-click Windows launcher
+├── requirements.txt            # Python dependencies
+├── package.json                # Frontend dependencies (Vite)
+├── .env.example                # Environment variable template
 ├── scripts/
-│   ├── dev.ps1                 # Inicialização conjunta Backend + Frontend (Windows)
-│   ├── dev.sh                  # Inicialização conjunta (Linux/macOS)
-│   └── install.sh              # Instalação de dependências (Linux/macOS)
+│   ├── dev.ps1                 # Combined Backend + Frontend dev runner (Windows)
+│   ├── dev.sh                  # Combined dev runner (Linux/macOS)
+│   └── install.sh              # Dependency installer (Linux/macOS)
 ├── server/
-│   ├── main.py                 # API FastAPI, WebSocket proxy & avaliação pós-aula
-│   ├── gemini_live.py          # Cliente Gemini Live API (API Key ou Vertex AI)
-│   ├── db.py                   # Persistência SQLite (logs, perfil CEFR & flashcards SM-2)
+│   ├── main.py                 # FastAPI app, WebSocket proxy & post-lesson evaluation
+│   ├── gemini_live.py          # Gemini Live API client (API Key or Vertex AI)
+│   ├── db.py                   # SQLite persistence (logs, CEFR profile & SM-2 flashcards)
 │   └── ...
 └── src/
-    ├── style.css               # Design System (Dark/Light, semântica, responsividade)
-    ├── data/lessons.json       # Grade curricular CEFR A1–C2 (60 aulas)
-    └── components/             # Web Components (Splash, Dashboard, Sala de Aula, Feedback, Flashcards)
+    ├── style.css               # Design System (Dark/Light themes, semantics, responsive grid)
+    ├── data/lessons.json       # CEFR A1–C2 curriculum (60 lessons)
+    └── components/             # Web Components (Splash, Dashboard, Classroom, Summary, Flashcards)
 ```
 
 ---
 
-## Pré-requisitos
+## Prerequisites
 
 - **Node.js** v18+
 - **Python** v3.10+
-- Uma chave de API do **[Google AI Studio](https://aistudio.google.com/)** (`GEMINI_API_KEY`) **ou** projeto Google Cloud com Vertex AI habilitado.
+- A **[Google AI Studio](https://aistudio.google.com/)** API key (`GEMINI_API_KEY`) **or** a Google Cloud project with Vertex AI enabled.
 
 ---
 
-## Instalação e Execução Passo a Passo
+## Getting Started
 
-### 1. Clonar o repositório
+### 1. Clone the repository
 ```bash
 git clone https://github.com/adrielrocha20155-lgtm/fluent-ai-tutor.git
 cd fluent-ai-tutor
 ```
 
-### 2. Configurar variáveis de ambiente
-Copie o arquivo de exemplo e preencha sua chave `GEMINI_API_KEY`:
+### 2. Configure environment variables
+Copy `.env.example` to `.env` and add your `GEMINI_API_KEY`:
 ```bash
 # Windows (PowerShell)
 Copy-Item .env.example .env
@@ -71,9 +71,9 @@ Copy-Item .env.example .env
 # Linux / macOS
 cp .env.example .env
 ```
-Edite o `.env` e substitua `your_api_key_here` pela sua chave do Google AI Studio.
+Edit `.env` and replace `your_api_key_here` with your Google AI Studio API key.
 
-### 3. Instalar dependências
+### 3. Install dependencies
 
 **Windows (PowerShell):**
 ```powershell
@@ -87,10 +87,10 @@ python -m venv .venv
 ./scripts/install.sh
 ```
 
-### 4. Iniciar a aplicação
+### 4. Run the application
 
 **Windows:**
-Dê um duplo clique em `start-app.bat` ou execute:
+Double-click `start-app.bat` or run:
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\scripts\dev.ps1
 ```
@@ -100,4 +100,4 @@ powershell -ExecutionPolicy Bypass -File .\scripts\dev.ps1
 ./scripts/dev.sh
 ```
 
-Acesse **`http://localhost:5173/`** no navegador.
+Open **`http://localhost:5173/`** in your browser.
