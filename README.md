@@ -21,6 +21,40 @@ An interactive, real-time voice English tutoring platform inspired by **Preply**
 
 ---
 
+## Architecture & Data Flow
+
+```mermaid
+flowchart LR
+    subgraph Client["Frontend (Vanilla JS + Vite)"]
+        Audio["Browser Mic / Speaker (Web Audio API)"]
+        UI["Classroom & Transcript UI"]
+        FC["Anki Flashcards UI"]
+    end
+
+    subgraph Backend["Backend (FastAPI + Uvicorn)"]
+        WS["WebSocket Proxy (/ws)"]
+        Eval["Post-Lesson Evaluator (/api/lessons/evaluate)"]
+        SM2["SM-2 Scheduler (/api/flashcards)"]
+        DB[("SQLite (data/learning.db)")]
+    end
+
+    subgraph AI["Google Gemini"]
+        Live["Gemini Live API (Native Audio + STT)"]
+        Flash["Gemini Flash (Structured JSON Eval)"]
+    end
+
+    Audio <-->|"PCM16 Audio Stream"| WS
+    WS <-->|"Full-Duplex Session + SlidingWindow"| Live
+    UI -->|"Captured Transcript"| Eval
+    Eval -->|"Prompt + Context"| Flash
+    Flash -->|"CEFR Score, Mistakes & Cards"| DB
+    DB -->|"Adaptive Weakness Profile"| WS
+    DB <-->|"Due Cards & Intervals"| SM2
+    SM2 <-->|"Again / Hard / Good / Easy"| FC
+```
+
+---
+
 ## Tech Stack & Project Structure
 
 - **Frontend**: Vanilla JavaScript (Web Components), Vite, Web Audio API, WebSockets, custom CSS Design System (Dark/Light mode).
@@ -105,3 +139,9 @@ powershell -ExecutionPolicy Bypass -File .\scripts\dev.ps1
 ```
 
 Open **`http://localhost:5173/`** in your browser.
+
+---
+
+## License
+
+This project is licensed under the **Apache License 2.0** — see the [LICENSE](LICENSE) file for details.
