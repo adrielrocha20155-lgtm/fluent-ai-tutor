@@ -74,8 +74,9 @@ export class AudioStreamer {
       );
 
       // Set up message handling from the worklet
+      this.isMuted = false;
       this.audioWorklet.port.onmessage = (event) => {
-        if (!this.isStreaming) return;
+        if (!this.isStreaming || this.isMuted) return;
 
         if (event.data.type === "audio") {
           const inputData = event.data.data;
@@ -100,6 +101,15 @@ export class AudioStreamer {
     } catch (error) {
       console.error("Failed to start audio streaming:", error);
       throw error;
+    }
+  }
+
+  setMuted(muted) {
+    this.isMuted = Boolean(muted);
+    if (this.mediaStream) {
+      this.mediaStream.getAudioTracks().forEach((track) => {
+        track.enabled = !this.isMuted;
+      });
     }
   }
 

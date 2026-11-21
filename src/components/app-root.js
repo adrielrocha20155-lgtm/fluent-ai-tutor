@@ -1,24 +1,8 @@
-/**
- * Copyright 2026 Google LLC
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
-
 import './view-splash.js';
 import './view-missions.js';
 import './view-chat.js';
 import './view-summary.js';
-import './text-cycler.js';
+import './view-flashcards.js';
 
 class AppRoot extends HTMLElement {
     constructor() {
@@ -27,19 +11,18 @@ class AppRoot extends HTMLElement {
             view: 'splash', // splash, missions, chat, summary
             selectedMission: null,
             selectedLanguage: null,
+            selectedFromLanguage: null,
+            selectedMode: 'preply_tutor',
             sessionResult: null
         };
     }
 
     connectedCallback() {
-        // Setup static layout once
         this.innerHTML = '';
 
-        // Theme State
         this.themes = ['dark', 'light', 'system'];
-        this.currentTheme = localStorage.getItem('theme') || 'system';
+        this.currentTheme = localStorage.getItem('theme') || 'dark';
 
-        // System Theme Listener
         this.mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
         this.mediaQuery.addEventListener('change', () => {
             if (this.currentTheme === 'system') {
@@ -47,61 +30,59 @@ class AppRoot extends HTMLElement {
             }
         });
 
-        // Initial Theme Application
         this.applyTheme(this.currentTheme);
 
-        // Persistent Header container
+        // Compact Top Header
         const header = document.createElement('header');
         header.style.cssText = `
             display: flex;
-            justify-content: flex-end;
+            justify-content: space-between;
             align-items: center;
-            padding: var(--spacing-sm) var(--spacing-md);
-            gap: var(--spacing-md);
+            padding: 12px 24px;
+            max-width: 1120px;
+            margin: 0 auto;
             width: 100%;
-            pointer-events: none; /* Let clicks pass through to underlying elements if needed, but buttons need pointer-events: auto */
         `;
 
         header.innerHTML = `
-            <div style="pointer-events: auto; display: flex; align-items: center; gap: var(--spacing-sm);">
-                <a href="https://github.com/ZackAkil/immersive-language-learning-with-live-api" target="_blank" style="
-                    display: flex;
+            <button id="brand-home" aria-label="Go to Dashboard" style="
+                background: transparent;
+                color: var(--color-text-main);
+                display: flex;
+                align-items: center;
+                gap: 8px;
+                font-weight: 800;
+                font-size: 1rem;
+                padding: 4px 8px;
+                border-radius: var(--radius-sm);
+            ">
+                <span style="
+                    display: inline-flex;
                     align-items: center;
                     justify-content: center;
-                    gap: 12px;
-                    padding: 14px 28px;
-                    border: 2px dashed var(--color-accent-primary);
-                    border-radius: var(--radius-md);
-                    color: var(--color-text-main);
-                    text-decoration: none;
-                    font-weight: 800;
-                    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-                    background: var(--color-surface);
-                    font-size: 1.1rem;
-                    backdrop-filter: blur(10px);
-                    box-shadow: var(--shadow-sm);
-                " onmouseover="this.style.transform='translateY(-3px)'; this.style.boxShadow='var(--shadow-md)'; this.style.background='var(--color-bg)';" onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='var(--shadow-sm)'; this.style.background='var(--color-surface)';" >
-                    <svg height="20" viewBox="0 0 16 16" version="1.1" width="20" aria-hidden="true" style="fill: currentColor; opacity: 0.8;"><path fill-rule="evenodd" d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"></path></svg>
-                    Source
-                </a>
-            </div>
+                    width: 28px;
+                    height: 28px;
+                    border-radius: 8px;
+                    background: var(--color-accent-primary);
+                    color: #ffffff;
+                    font-size: 0.9rem;
+                ">F</span>
+                <span>FluentAI</span>
+                <span style="font-size: 0.72rem; font-weight: 700; padding: 2px 8px; border-radius: 999px; background: var(--color-surface-elevated); color: var(--color-accent-secondary); border: var(--glass-border);">1-on-1 Tutor</span>
+            </button>
 
             <button id="theme-toggle" aria-label="Toggle Theme" style="
-                pointer-events: auto;
                 background: var(--color-surface);
                 color: var(--color-text-main);
-                border: 1px solid var(--glass-border);
+                border: var(--glass-border);
                 border-radius: 50%;
-                width: 40px;
-                height: 40px;
+                width: 38px;
+                height: 38px;
                 display: flex;
                 align-items: center;
                 justify-content: center;
                 cursor: pointer;
-                box-shadow: var(--shadow-sm);
-                font-size: 1.2rem;
-                transition: all 0.2s ease;
-                backdrop-filter: blur(10px);
+                font-size: 1.1rem;
             ">
                 <span class="theme-icon"></span>
             </button>
@@ -109,31 +90,23 @@ class AppRoot extends HTMLElement {
 
         this.appendChild(header);
 
-        // Theme Toggle Logic
+        header.querySelector('#brand-home').addEventListener('click', () => {
+            if (this.state.view !== 'splash' && this.state.view !== 'missions') {
+                this.state.view = 'missions';
+                this.render();
+            }
+        });
+
         const themeBtn = header.querySelector('#theme-toggle');
         themeBtn.onclick = () => this.cycleTheme();
         this.themeBtn = themeBtn;
         this.updateThemeBtnIcon();
 
-        // Inject GitHub Buttons Script
-        if (!document.getElementById('github-buttons-script')) {
-            const script = document.createElement('script');
-            script.id = 'github-buttons-script';
-            script.src = 'https://buttons.github.io/buttons.js';
-            script.async = true;
-            script.defer = true;
-            document.head.appendChild(script);
-        }
-
-        // View Container
         this.viewContainer = document.createElement('div');
-        this.viewContainer.style.height = "100%";
-        this.viewContainer.style.width = "100%";
+        this.viewContainer.style.width = '100%';
         this.appendChild(this.viewContainer);
 
         this.render();
-
-        this.checkConfigStatus();
 
         this.addEventListener('navigate', (e) => {
             this.state.view = e.detail.view;
@@ -142,6 +115,7 @@ class AppRoot extends HTMLElement {
             if (e.detail.fromLanguage) this.state.selectedFromLanguage = e.detail.fromLanguage;
             if (e.detail.mode) this.state.selectedMode = e.detail.mode;
             if (e.detail.result) this.state.sessionResult = e.detail.result;
+            window.scrollTo({ top: 0, behavior: 'instant' });
             this.render();
         });
     }
@@ -164,10 +138,8 @@ class AppRoot extends HTMLElement {
     }
 
     cycleTheme() {
-        // Cycle: Dark -> Light -> System -> Dark
         const modes = ['dark', 'light', 'system'];
         const currentIdx = modes.indexOf(this.currentTheme);
-        // Handle case where currentTheme might be invalid or old
         const nextIdx = currentIdx === -1 ? 0 : (currentIdx + 1) % modes.length;
 
         this.currentTheme = modes[nextIdx];
@@ -178,71 +150,15 @@ class AppRoot extends HTMLElement {
 
     updateThemeBtnIcon() {
         if (!this.themeBtn) return;
-
-        let icon = '';
-        let title = '';
-
-        switch (this.currentTheme) {
-            case 'light':
-                icon = '☀️'; // Sun
-                title = 'Light Mode';
-                break;
-            case 'dark':
-                icon = '🌙'; // Moon
-                title = 'Dark Mode';
-                break;
-            case 'system':
-                icon = '💻'; // Laptop/System
-                title = 'System Default';
-                break;
-        }
-
+        const map = {
+            light: { icon: '☀️', title: 'Light Mode' },
+            dark: { icon: '🌙', title: 'Dark Mode' },
+            system: { icon: '💻', title: 'System Default' }
+        };
+        const cfg = map[this.currentTheme] || map.dark;
         const iconSpan = this.themeBtn.querySelector('.theme-icon');
-        if (iconSpan) iconSpan.textContent = icon;
-        this.themeBtn.title = title;
-    }
-
-    async checkConfigStatus() {
-        try {
-            const res = await fetch('/api/status');
-            const data = await res.json();
-
-            if (data.mode === 'simple') {
-                this.showSimpleModeWarning(data.missing);
-            }
-        } catch (e) {
-            console.warn("Failed to check config status:", e);
-        }
-    }
-
-    showSimpleModeWarning(missing) {
-        const warning = document.createElement('div');
-        warning.style.cssText = `
-            position: fixed;
-            bottom: 0;
-            left: 0;
-            right: 0;
-            background: #fff3cd;
-            color: #856404;
-            padding: 8px 16px;
-            text-align: center;
-            font-size: 0.9rem;
-            z-index: 9999;
-            border-top: 1px solid #ffeeba;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            gap: 8px;
-            box-shadow: 0 -2px 10px rgba(0,0,0,0.05);
-        `;
-
-        const missingText = missing.join(' & ');
-        warning.innerHTML = `
-            <span>⚠️ <b>Simple Mode Check:</b> Production security features (${missingText}) are not configured.</span>
-            <a href="https://github.com/ZackAkil/immersive-language-learning-with-live-api#advanced-configuration" target="_blank" style="color: #533f03; text-decoration: underline; font-weight: bold; margin-left: 4px;">Learn more</a>
-        `;
-
-        this.appendChild(warning);
+        if (iconSpan) iconSpan.textContent = cfg.icon;
+        this.themeBtn.title = cfg.title;
     }
 
     render() {
@@ -256,6 +172,7 @@ class AppRoot extends HTMLElement {
                 currentView = document.createElement('view-splash');
                 break;
             case 'missions':
+            case 'mission-selector':
                 currentView = document.createElement('view-missions');
                 break;
             case 'chat':
@@ -268,6 +185,9 @@ class AppRoot extends HTMLElement {
             case 'summary':
                 currentView = document.createElement('view-summary');
                 currentView.result = this.state.sessionResult;
+                break;
+            case 'flashcards':
+                currentView = document.createElement('view-flashcards');
                 break;
             default:
                 currentView = document.createElement('view-splash');

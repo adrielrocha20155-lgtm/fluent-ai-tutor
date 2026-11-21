@@ -1,6 +1,73 @@
 :root {
-  /* Box sizing reset */
   box-sizing: border-box;
+
+  /* Colors - Calm EdTech Dark (Default) */
+  --color-bg: #0f1117;
+  --color-surface: #171a23;
+  --color-surface-elevated: #1e222e;
+  --color-surface-solid: #171a23;
+  --color-text-main: #f3f4f6;
+  --color-text-sub: #cbd5e1;
+  --color-text-muted: #94a3b8;
+
+  /* Primary Accent (High-Contrast Emerald) */
+  --color-accent-primary: #059669;
+  --color-accent-primary-hover: #047857;
+  --color-accent-primary-rgb: 5, 150, 105;
+  --color-accent-secondary: #34d399;
+  --color-accent-glow: rgba(16, 185, 129, 0.18);
+
+  /* Semantic Feedback */
+  --color-success: #22c55e;
+  --color-success-bg: rgba(34, 197, 94, 0.12);
+  --color-warning: #f59e0b;
+  --color-warning-bg: rgba(245, 158, 11, 0.12);
+  --color-danger: #fb7185;
+  --color-danger-bg: rgba(251, 113, 133, 0.12);
+
+  /* Typography */
+  --font-heading: 'Libre Baskerville', Georgia, serif;
+  --font-body: 'Nunito', system-ui, -apple-system, sans-serif;
+
+  /* 4px / 8px Spacing Grid */
+  --spacing-xs: 4px;
+  --spacing-sm: 8px;
+  --spacing-md: 16px;
+  --spacing-lg: 24px;
+  --spacing-xl: 32px;
+  --spacing-xxl: 48px;
+
+  /* Radius */
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 18px;
+  --radius-full: 9999px;
+
+  /* Shadows & Borders */
+  --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.25);
+  --shadow-md: 0 10px 28px rgba(0, 0, 0, 0.35);
+  --shadow-glow: 0 0 24px var(--color-accent-glow);
+  --glass-border: 1px solid rgba(255, 255, 255, 0.1);
+  --backdrop-blur: blur(12px);
+}
+
+.light-mode {
+  --color-bg: #f8fafc;
+  --color-surface: #ffffff;
+  --color-surface-elevated: #f1f5f9;
+  --color-surface-solid: #ffffff;
+  --color-text-main: #0f172a;
+  --color-text-sub: #334155;
+  --color-text-muted: #64748b;
+
+  --color-accent-primary: #059669;
+  --color-accent-primary-hover: #047857;
+  --color-accent-secondary: #047857;
+  --color-accent-glow: rgba(5, 150, 105, 0.15);
+
+  --glass-border: 1px solid rgba(15, 23, 42, 0.1);
+  --shadow-sm: 0 2px 8px rgba(15, 23, 42, 0.06);
+  --shadow-md: 0 10px 28px rgba(15, 23, 42, 0.08);
 }
 
 *,
@@ -9,90 +76,8 @@
   box-sizing: inherit;
 }
 
-:root {
-  /* Colors - Mystic Archive (Dark Default) */
-    --color-bg: #0a0b10;
-    /* Deep Blue-Black */
-    --color-surface: rgba(22, 24, 34, 0.6);
-    /* Glassy Surface */
-    --color-surface-solid: #161822;
-    /* Fallback */
-    --color-text-main: #eaddcf;
-    /* Warm Paper White */
-    --color-text-sub: #949ba4;
-    /* Cool Gray */
-  
-    /* Accents */
-    --color-accent-primary: #a3b18a;
-    /* Golden Sage */
-    --color-accent-secondary: #d4a373;
-    /* Leather/Gold */
-    --color-accent-glow: rgba(163, 177, 138, 0.15);
-  
-    /* Functional */
-    --color-danger: #e57373;
-    --color-success: #81c784;
-    --texture-opacity: 0.03;
-
-  /* Typography */
-  --font-heading: 'Libre Baskerville', serif;
-  --font-body: 'Nunito', sans-serif;
-
-  /* Spacing */
-  --spacing-xs: 4px;
-  --spacing-sm: 8px;
-  --spacing-md: 16px;
-  --spacing-lg: 24px;
-  --spacing-xl: 32px;
-  --spacing-xxl: 64px;
-
-  /* Border Radius */
-  --radius-sm: 8px;
-  --radius-md: 16px;
-    /* Slightly rounder */
-    --radius-lg: 24px;
-  --radius-full: 9999px;
-
-  /* Effects */
-    --shadow-sm: 0 4px 6px -1px rgba(0, 0, 0, 0.3);
-    --shadow-md: 0 10px 30px -5px rgba(0, 0, 0, 0.4);
-    --shadow-glow: 0 0 20px var(--color-accent-glow);
-    --glass-border: 1px solid rgba(255, 255, 255, 0.08);
-    --backdrop-blur: blur(12px);
-  }
-  
-  /* Light Mode Override - Fresh Parchment */
-  .light-mode {
-    --color-bg: #f5f2eb;
-    /* Creamy Parchment */
-    --color-surface: rgba(255, 255, 255, 0.85);
-    /* More opaque */
-    --color-surface-solid: #ffffff;
-    --color-text-main: #2c2420;
-    /* Dark Ink */
-    --color-text-sub: #5e5048;
-    /* Sepia Gray */
-  
-    --color-accent-primary: #5c6b48;
-    /* Deep Olive */
-    --color-accent-secondary: #000000;
-    /* Distinct Black for strong headers/actions */
-    /* Aged Wood */
-    --color-accent-glow: rgba(92, 107, 72, 0.2);
-  
-    --texture-opacity: 0.15;
-    --glass-border: 1px solid rgba(0, 0, 0, 0.08);
-    /* Stronger border */
-    --shadow-sm: 0 4px 6px -1px rgba(44, 36, 32, 0.1);
-    --shadow-md: 0 10px 30px -5px rgba(44, 36, 32, 0.12);
-}
-
-/* Paper Texture */
 body {
   background-color: var(--color-bg);
-  /* Realistic Paper Texture: Turbulence + Diffuse Lighting */
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='400' height='400' opacity='1'%3E%3Cfilter id='paper' x='0%25' y='0%25' width='100%25' height='100%25'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='3' result='noise'/%3E%3CfeDiffuseLighting in='noise' lighting-color='white' surfaceScale='2'%3E%3CfeDistantLight azimuth='45' elevation='60'/%3E%3C/feDiffuseLighting%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23paper)'/%3E%3C/svg%3E");
-  background-blend-mode: multiply;
   color: var(--color-text-main);
   font-family: var(--font-body);
   margin: 0;
@@ -100,49 +85,19 @@ body {
   -webkit-font-smoothing: antialiased;
   min-height: 100vh;
   overflow-x: hidden;
-  position: relative;
-  }
-  
-  /* Texture Overlay to handle opacity via CSS var */
-  body::before {
-    content: "";
-    position: absolute;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    pointer-events: none;
-    background-image: inherit;
-    opacity: var(--texture-opacity);
-    z-index: -1;
-  }
-  
-  /* IMPORTANT: We need to remove background-image from body itself if we use the pseudo-element method for opacity, 
-           OR we can just update the SVG opacity in the URL if we wanted dynamic URL (harder in pure CSS). 
-           Actually, simplified approach: Let's apply the opacity to the blend mode or use an overlay.
-           Better: Use a pseudo-element for the texture entirely so we can control opacity.
-        */
-  body {
-    background-image: none;
-    /* Remove direct image */
-    background-color: var(--color-bg);
+  line-height: 1.5;
 }
 
-h1,
-h2,
-h3,
-h4,
-h5,
-h6 {
+h1, h2, h3, h4, h5, h6 {
   font-family: var(--font-heading);
   font-weight: 700;
-  margin: 0 0 var(--spacing-md) 0;
+  margin: 0 0 var(--spacing-sm) 0;
   color: var(--color-text-main);
 }
 
 p {
   line-height: 1.6;
-  margin-bottom: var(--spacing-md);
+  margin: 0 0 var(--spacing-md) 0;
   color: var(--color-text-sub);
 }
 
@@ -153,75 +108,142 @@ button {
   transition: all 0.2s ease;
 }
 
+button:focus-visible,
+input:focus-visible,
+select:focus-visible {
+  outline: 2px solid var(--color-accent-secondary);
+  outline-offset: 2px;
+}
+
+/* Custom Scrollbar (Dark & Light friendly) */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(148, 163, 184, 0.3) transparent;
+}
+
+*::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+*::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 184, 0.3);
+  border-radius: 9999px;
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background: rgba(148, 163, 184, 0.5);
+}
+
+/* Hide broken reCAPTCHA localhost badge */
+.grecaptcha-badge {
+  visibility: hidden !important;
+  pointer-events: none !important;
+}
+
 /* Utilities */
 .container {
-  max-width: 520px;
-    /* Slightly wider for elegance */
+  max-width: 1120px;
   margin: 0 auto;
-  padding: var(--spacing-lg);
-  min-height: 100vh;
+  padding: var(--spacing-md) var(--spacing-lg);
   display: flex;
   flex-direction: column;
 }
 
 .glass-panel {
   background: var(--color-surface);
-  backdrop-filter: var(--backdrop-blur);
-  -webkit-backdrop-filter: var(--backdrop-blur);
   border: var(--glass-border);
   box-shadow: var(--shadow-sm);
   border-radius: var(--radius-lg);
 }
+
 .text-center {
   text-align: center;
-}
-
-.flex-center {
-  display: flex;
-  align-items: center;
-  justify-content: center;
 }
 
 .hidden {
   display: none !important;
 }
 
-/* Component Specific */
-/* Component Specific */
 .mission-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-  gap: var(--spacing-lg);
+  grid-template-columns: repeat(auto-fill, minmax(290px, 1fr));
+  gap: var(--spacing-md);
   margin-bottom: var(--spacing-xl);
 }
+
 .card {
   background: var(--color-surface);
-  backdrop-filter: var(--backdrop-blur);
-    -webkit-backdrop-filter: var(--backdrop-blur);
-    border: var(--glass-border);
-    border-radius: var(--radius-lg);
-    padding: var(--spacing-lg);
+  border: var(--glass-border);
+  border-radius: var(--radius-lg);
+  padding: var(--spacing-lg);
   box-shadow: var(--shadow-sm);
-  transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
-    display: flex;
-    flex-direction: column;
-    height: 100%;
-  }
-  
-  .card:hover {
-    transform: translateY(-5px) scale(1.02);
-    box-shadow: 0 15px 30px rgba(0, 0, 0, 0.3), var(--shadow-glow);
-    border-color: var(--color-accent-primary);
-    z-index: 10;
+  transition: transform 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
 }
 
-/* Animations */
+.card:hover {
+  transform: translateY(-3px);
+  box-shadow: var(--shadow-md);
+  border-color: var(--color-accent-primary);
+}
+
+.btn-primary {
+  background: var(--color-accent-primary);
+  color: #ffffff;
+  font-weight: 700;
+  padding: 12px 24px;
+  border-radius: var(--radius-md);
+  font-size: 0.95rem;
+}
+
+.btn-primary:hover {
+  background: var(--color-accent-primary-hover);
+}
+
+.btn-secondary {
+  background: var(--color-surface-elevated);
+  color: var(--color-text-main);
+  border: var(--glass-border);
+  font-weight: 600;
+  padding: 10px 18px;
+  border-radius: var(--radius-md);
+  font-size: 0.9rem;
+}
+
+.btn-secondary:hover {
+  border-color: var(--color-accent-secondary);
+}
+
+/* Skeleton Shimmer */
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+.skeleton {
+  background: linear-gradient(
+    90deg,
+    rgba(148, 163, 184, 0.08) 25%,
+    rgba(148, 163, 184, 0.16) 50%,
+    rgba(148, 163, 184, 0.08) 75%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.4s infinite;
+  border-radius: var(--radius-sm);
+}
+
 @keyframes fadeIn {
   from {
     opacity: 0;
-    transform: translateY(10px);
+    transform: translateY(6px);
   }
-
   to {
     opacity: 1;
     transform: translateY(0);
@@ -229,5 +251,5 @@ button {
 }
 
 .fade-in {
-  animation: fadeIn 0.7s ease-out forwards;
+  animation: fadeIn 0.28s ease-out forwards;
 }

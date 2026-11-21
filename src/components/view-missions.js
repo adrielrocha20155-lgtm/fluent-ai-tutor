@@ -1,435 +1,627 @@
-/**
- * Copyright 2026 Google LLC
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
-
-import missionsData from '../data/missions.json';
+import lessonsData from '../data/lessons.json';
 
 class ViewMissions extends HTMLElement {
-  connectedCallback() {
-    const options = `
-            <option>🇬🇧 English</option>
-            <option>🇩🇪 German</option>
-            <option>🇪🇸 Spanish</option>
-            <option>🇫🇷 French</option>
-            <option>🇮🇳 Hindi</option>
-            <option>🇦🇪 Arabic</option>
-            <option>🇮🇩 Indonesian</option>
-            <option>🇮🇹 Italian</option>
-            <option>🇯🇵 Japanese</option>
-            <option>🇰🇷 Korean</option>
-            <option>🇧🇷 Portuguese</option>
-            <option>🇷🇺 Russian</option>
-            <option>🇳🇱 Dutch</option>
-            <option>🇵🇱 Polish</option>
-            <option>🇧🇩 Bengali</option>
-            <option>🇮🇳 Marathi</option>
-            <option>🇮🇳 Tamil</option>
-            <option>🇮🇳 Telugu</option>
-            <option>🇹🇭 Thai</option>
-            <option>🇹🇷 Turkish</option>
-            <option>🇻🇳 Vietnamese</option>
-            <option>🇷🇴 Romanian</option>
-            <option>🇺🇦 Ukrainian</option>
-            <option>🧑‍🔬 Science Jargon</option>
+  constructor() {
+    super();
+    this.profile = null;
+    this.history = [];
+    this.flashcardsDueCount = 0;
+    this.isLoading = true;
+    this.selectedLevel = localStorage.getItem('preply_level') || 'A2';
+    this.showHistory = false;
+  }
 
+  async connectedCallback() {
+    this.renderShell();
+    this.renderInsightsSkeleton();
+    await this.loadLearningData();
+  }
+
+  async loadLearningData() {
+    this.isLoading = true;
+    try {
+      const [histRes, fcRes] = await Promise.all([
+        fetch('/api/lessons/history?limit=30'),
+        fetch('/api/flashcards/due?limit=1'),
+      ]);
+      if (histRes.ok) {
+        const data = await histRes.json();
+        this.profile = data.profile || null;
+        this.history = data.history || [];
+        if (this.profile?.current_level && !localStorage.getItem('preply_level')) {
+          this.selectedLevel = this.profile.current_level;
+        }
+      }
+      if (fcRes.ok) {
+        const fcData = await fcRes.json();
+        this.flashcardsDueCount = fcData.due_count || 0;
+      }
+    } catch (e) {
+      console.warn('Could not load learning history:', e);
+    } finally {
+      this.isLoading = false;
+    }
+    this.renderAiInsightsPanel();
+    this.renderLevelTabs();
+    this.renderLessons();
+    this.renderHistoryPanel();
+  }
+
+  renderShell() {
+    const options = `
+      <option>🇧🇷 Portuguese</option>
+      <option>🇬🇧 English</option>
+      <option>🇪🇸 Spanish</option>
+      <option>🇫🇷 French</option>
+      <option>🇩🇪 German</option>
+      <option>🇮🇹 Italian</option>
+      <option>🇯🇵 Japanese</option>
+      <option>🇰🇷 Korean</option>
     `;
 
     this.innerHTML = `
-      <div class="container" style="max-width: 1000px;">
-        <!-- HUD Panel -->
-        <div class="hud-panel glass-panel" style="
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: var(--spacing-xl);
-            padding: var(--spacing-lg);
-            align-items: start;
-            max-width: 900px;
-            margin: 0 auto var(--spacing-xxl) auto;
-        ">
-            <!-- Native Language Column -->
-            <div style="display: flex; flex-direction: column; gap: 8px;">
-                <label style="
-                    font-size: 0.8rem;
-                    text-transform: uppercase;
-                    letter-spacing: 1px;
-                    color: var(--color-text-sub);
-                    font-weight: 700;
-                    margin-left: 4px;
-                ">I speak</label>
-                <div style="position: relative;">
-                     <select id="from-lang" style="
-                        width: 100%;
-                        padding: 12px 16px;
-                        border: var(--glass-border);
-                        border-radius: var(--radius-md);
-                        background: var(--color-surface);
-                        color: var(--color-text-main);
-                        font-family: var(--font-body);
-                        font-weight: 600;
-                        appearance: none;
-                        cursor: pointer;
-                        font-size: 1rem;
-                        transition: all 0.2s;
-                     " onmouseover="this.style.background='var(--color-bg)'" onmouseout="this.style.background='var(--color-surface)'">
-                        ${options}
-                     </select>
-                     <div style="position: absolute; right: 12px; top: 50%; transform: translateY(-50%); pointer-events: none; opacity: 0.5;">▼</div>
-                </div>
-            </div>
-            
-            <!-- Target Language Column -->
-            <div style="display: flex; flex-direction: column; gap: 8px;">
-                <label style="
-                    font-size: 0.8rem; 
-                    text-transform: uppercase; 
-                    letter-spacing: 1px; 
-                    color: var(--color-accent-secondary);
-                    font-weight: 700;
-                    margin-left: 4px;
-                ">I want to learn</label>
-                <div style="position: relative;">
-                    <select id="to-lang" style="
-                        width: 100%;
-                        padding: 12px 16px;
-                        border: 1px solid var(--color-accent-secondary);
-                        border-radius: var(--radius-md);
-                        background: var(--color-surface);
-                        color: var(--color-text-main);
-                        font-family: var(--font-body);
-                        font-weight: 700;
-                        appearance: none;
-                        cursor: pointer;
-                        font-size: 1rem;
-                        box-shadow: var(--shadow-sm);
-                        transition: all 0.2s;
-                    " onmouseover="this.style.background='var(--color-bg)'" onmouseout="this.style.background='var(--color-surface)'">
-                        ${options}
-                    </select>
-                     <div style="position: absolute; right: 12px; top: 50%; transform: translateY(-50%); pointer-events: none; color: var(--color-accent-secondary);">▼</div>
-                </div>
-            </div>
+      <div class="container" style="padding-bottom: var(--spacing-xxl);">
+        <!-- Unified CEFR Progress & Weakness Insights -->
+        <div id="ai-insights-panel" style="
+          display: grid;
+          grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+          gap: var(--spacing-md);
+          margin-bottom: var(--spacing-md);
+        "></div>
 
-            <!-- Mode Selection (Full Width Row) -->
-            <div style="grid-column: 1 / -1; margin-top: var(--spacing-md); padding-top: var(--spacing-lg); border-top: 1px solid rgba(255,255,255,0.05);">
-                 <label style="
-                    display: block;
-                    font-size: 0.8rem; 
-                    text-transform: uppercase; 
-                    letter-spacing: 1px; 
-                    color: var(--color-text-sub);
-                    font-weight: 700;
-                    margin-bottom: 12px;
-                    margin-left: 4px;
-                ">Select Experience Mode</label>
-                
-                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: var(--spacing-md);">
-                    <button id="mode-teacher" class="mode-btn" style="
-                        display: flex;
-                        align-items: center;
-                        gap: 12px;
-                        padding: 16px; 
-                        border-radius: var(--radius-md); 
-                        border: 1px solid transparent; 
-                        background: rgba(255,255,255,0.03); 
-                        color: var(--color-text-sub); 
-                        cursor: pointer; 
-                        transition: all 0.2s; 
-                        text-align: left;
-                    ">
-                        <span style="font-size: 1.5rem;">🧑‍🏫</span>
-                        <div>
-                            <div style="font-weight: 700; font-size: 1rem; color: var(--color-text-main);">Teacher Mode</div>
-                            <div style="font-size: 0.8rem; opacity: 0.7; margin-top: 2px;">Guidance, specific tips, and corrections</div>
-                        </div>
-                    </button>
-                    
-                    <button id="mode-immersive" class="mode-btn" style="
-                        display: flex;
-                        align-items: center;
-                        gap: 12px;
-                        padding: 16px; 
-                        border-radius: var(--radius-md); 
-                        border: 1px solid transparent; 
-                        background: rgba(255,255,255,0.03); 
-                        color: var(--color-text-sub); 
-                        cursor: pointer; 
-                        transition: all 0.2s; 
-                        text-align: left;
-                    ">
-                        <span style="font-size: 1.5rem;">🎭</span>
-                        <div>
-                            <div style="font-weight: 700; font-size: 1rem; color: var(--color-text-main);">Immersive Roleplay</div>
-                            <div style="font-size: 0.8rem; opacity: 0.7; margin-top: 2px;">Strict roleplay, no breaks in character</div>
-                        </div>
-                    </button>
-                </div>
-            </div>
-        </div>
+        <!-- Collapsible Feedback Logs Drawer -->
+        <div id="history-panel" style="display: none; margin-bottom: var(--spacing-lg);"></div>
 
-        <div style="margin-bottom: var(--spacing-md); text-align: center;">
-            <h2 style="font-size: 2.5rem; letter-spacing: -0.03em; margin-bottom: var(--spacing-xs);">Choose Your Quest</h2>
-            <p style="opacity: 0.7; font-size: 1.1rem;">Select a scenario to begin your immersive practice</p>
-        </div>
-
-        <div class="missions-list mission-grid">
-          <!-- Missions will be injected here -->
-        </div>
-
-        <!-- Developer Control Center -->
+        <!-- Quick Actions Row: Focused Error Review + Free-Topic Roleplay -->
         <div style="
-            margin-top: var(--spacing-lg);
-            margin-bottom: var(--spacing-xl);
-            position: relative;
+          display: grid;
+          grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+          gap: var(--spacing-md);
+          margin-bottom: var(--spacing-lg);
         ">
-            <div style="
-                background: var(--color-surface);
-                backdrop-filter: blur(20px);
-                border: var(--glass-border);
-                border-radius: var(--radius-lg);
-                padding: 0;
-                overflow: hidden;
-                box-shadow: var(--shadow-md);
-            ">
-                 <!-- Terminal Header -->
-                <div style="
-                    background: rgba(0,0,0,0.05);
-                    padding: 12px 20px;
-                    border-bottom: var(--glass-border);
-                    display: flex;
-                    align-items: center;
-                    gap: 10px;
-                ">
-                    <div style="display: flex; gap: 6px;">
-                        <div style="width: 10px; height: 10px; border-radius: 50%; background: #ff5f56; opacity: 0.8;"></div>
-                        <div style="width: 10px; height: 10px; border-radius: 50%; background: #ffbd2e; opacity: 0.8;"></div>
-                        <div style="width: 10px; height: 10px; border-radius: 50%; background: #27c93f; opacity: 0.8;"></div>
-                    </div>
-                    <div style="font-family: 'Courier New', monospace; font-size: 0.8rem; opacity: 0.5; margin-left: 10px; color: var(--color-text-main);">developer_mode.sh</div>
-                </div>
-
-                <div style="padding: var(--spacing-xl); display: flex; align-items: center; justify-content: space-between; gap: var(--spacing-xl); flex-wrap: wrap;">
-                    <div style="flex: 2; min-width: 300px;">
-                        <h3 style="
-                            font-family: 'Courier New', monospace; 
-                            color: var(--color-accent-primary); 
-                            margin-bottom: var(--spacing-sm);
-                            font-size: 1.4rem;
-                            display: flex;
-                            align-items: center;
-                            gap: 10px;
-                        ">
-                            <span style="opacity: 0.5;">></span> Deploy Your Own Version
-                        </h3>
-                        <p style="opacity: 0.7; font-size: 1rem; line-height: 1.6; max-width: 500px; color: var(--color-text-sub);">
-                            Launch your own personalized instance in just 1-click. Customize scenarios, add new languages, or rewrite the world.
-                        </p>
-                    </div>
-
-                    <div style="flex: 1; display: flex; justify-content: flex-end; gap: var(--spacing-md);">
-
-
-                        <a href="https://deploy.cloud.run/?git_repo=https://github.com/ZackAkil/immersive-language-learning-with-live-api&utm_source=github&utm_medium=unpaidsoc&utm_campaign=FY-Q1-global-cloud-ai-starter-apps&utm_content=immergo-app&utm_term=-" target="_blank" style="
-                            display: flex;
-                            align-items: center;
-                            justify-content: center;
-                            gap: 12px;
-                            padding: 16px 32px;
-                            border-radius: var(--radius-md);
-                            color: #1a73e8;
-                            background: rgba(26, 115, 232, 0.05);
-                            text-decoration: none;
-                            font-weight: 800;
-                            box-shadow: 0 4px 15px rgba(26, 115, 232, 0.1);
-                            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-                            font-size: 1.1rem;
-                            white-space: nowrap;
-                            border: 2px dashed #1a73e8;
-                        " onmouseover="this.style.transform='translateY(-3px)'; this.style.boxShadow='0 8px 25px rgba(26, 115, 232, 0.2)'; this.style.background='rgba(26, 115, 232, 0.1)';" onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='0 4px 15px rgba(26, 115, 232, 0.1)'; this.style.background='rgba(26, 115, 232, 0.05)';" >
-                            <img src="https://www.gstatic.com/images/branding/product/1x/google_cloud_48dp.png" width="24" height="24" alt="Cloud Run Logo" />
-                            Deploy to Cloud Run
-                        </a>
-                    </div>
-                </div>
+          <!-- Card: Focused Error Review -->
+          <div class="glass-panel" style="
+            padding: var(--spacing-lg);
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            gap: 12px;
+            border-left: 4px solid var(--color-warning);
+          ">
+            <div>
+              <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px;">
+                <span style="font-size: 0.75rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.8px; color: var(--color-warning);">Targeted Practice</span>
+                <span style="font-size: 1.2rem;">🎯</span>
+              </div>
+              <h3 style="margin: 0 0 6px 0; font-size: 1.15rem;">Revisão Focada nos Meus Erros</h3>
+              <p style="margin: 0; font-size: 0.88rem; color: var(--color-text-sub);">
+                Sessão rápida gerada automaticamente a partir das dificuldades registradas no seu histórico SQLite.
+              </p>
             </div>
+            <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+              <button id="open-flashcards-btn" class="btn-primary" style="background: var(--color-warning); color: #111827;">
+                🃏 Revisar seus erros aqui
+              </button>
+              <button id="start-error-review-btn" class="btn-secondary" style="
+                border-color: var(--color-warning);
+                color: var(--color-text-main);
+              ">Praticar em Voz →</button>
+            </div>
+          </div>
+
+          <!-- Card: Free-Topic / Roleplay -->
+          <div class="glass-panel" style="
+            padding: var(--spacing-lg);
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            gap: 12px;
+            border-left: 4px solid var(--color-accent-secondary);
+          ">
+            <div>
+              <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px;">
+                <span style="font-size: 0.75rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.8px; color: var(--color-accent-secondary);">Open Conversation</span>
+                <span style="font-size: 1.2rem;">🎙️</span>
+              </div>
+              <h3 style="margin: 0 0 8px 0; font-size: 1.15rem;">Prática Livre / Roleplay</h3>
+              <div style="display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px;">
+                <button class="topic-chip" data-topic="IT Job Interview (Behavioral & Tech)" style="font-size: 0.76rem; padding: 4px 10px; border-radius: 999px; background: var(--color-surface-elevated); color: var(--color-text-sub); border: var(--glass-border);">💼 Entrevista de TI</button>
+                <button class="topic-chip" data-topic="Airport, Hotel & Travel Situations" style="font-size: 0.76rem; padding: 4px 10px; border-radius: 999px; background: var(--color-surface-elevated); color: var(--color-text-sub); border: var(--glass-border);">✈️ Viagens</button>
+                <button class="topic-chip" data-topic="Daily Standup & Technical Meeting" style="font-size: 0.76rem; padding: 4px 10px; border-radius: 999px; background: var(--color-surface-elevated); color: var(--color-text-sub); border: var(--glass-border);">💻 Reunião Técnica</button>
+                <button class="topic-chip" data-topic="Casual Everyday Conversation" style="font-size: 0.76rem; padding: 4px 10px; border-radius: 999px; background: var(--color-surface-elevated); color: var(--color-text-sub); border: var(--glass-border);">☕ Conversa Casual</button>
+              </div>
+            </div>
+            <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+              <input id="free-topic-input" type="text" placeholder="Digite qualquer tema ou cenário..." style="
+                flex: 1;
+                min-width: 180px;
+                padding: 10px 14px;
+                border-radius: var(--radius-md);
+                border: var(--glass-border);
+                background: var(--color-surface-elevated);
+                color: var(--color-text-main);
+                font-size: 0.9rem;
+              " />
+              <button id="start-free-lesson-btn" class="btn-primary">Iniciar Aula →</button>
+            </div>
+          </div>
         </div>
+
+        <!-- Compact Language & Lesson Style Bar -->
+        <div class="glass-panel" style="
+          padding: var(--spacing-md) var(--spacing-lg);
+          margin-bottom: var(--spacing-xl);
+          display: flex;
+          flex-wrap: wrap;
+          align-items: center;
+          justify-content: space-between;
+          gap: var(--spacing-md);
+        ">
+          <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
+            <div style="display: flex; align-items: center; gap: 6px;">
+              <label for="from-lang" style="font-size: 0.78rem; font-weight: 700; color: var(--color-text-muted); text-transform: uppercase;">Falo:</label>
+              <select id="from-lang" style="padding: 8px 12px; border: var(--glass-border); border-radius: var(--radius-sm); background: var(--color-surface-elevated); color: var(--color-text-main); font-weight: 600; font-size: 0.9rem;">
+                ${options}
+              </select>
+            </div>
+            <span style="color: var(--color-text-muted);">➔</span>
+            <div style="display: flex; align-items: center; gap: 6px;">
+              <label for="to-lang" style="font-size: 0.78rem; font-weight: 700; color: var(--color-accent-secondary); text-transform: uppercase;">Aprendo:</label>
+              <select id="to-lang" style="padding: 8px 12px; border: 1px solid var(--color-accent-primary); border-radius: var(--radius-sm); background: var(--color-surface-elevated); color: var(--color-text-main); font-weight: 700; font-size: 0.9rem;">
+                ${options}
+              </select>
+            </div>
+          </div>
+
+          <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+            <button id="mode-teacher" class="mode-btn" style="padding: 8px 14px; border-radius: var(--radius-sm); font-weight: 700; font-size: 0.85rem; display: flex; align-items: center; gap: 6px;">
+              <span>🧑‍🏫</span><span>Preply 1-on-1 Tutor</span>
+            </button>
+            <button id="mode-immersive" class="mode-btn" style="padding: 8px 14px; border-radius: var(--radius-sm); font-weight: 700; font-size: 0.85rem; display: flex; align-items: center; gap: 6px;">
+              <span>🎭</span><span>Immersive Only</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- CEFR Curriculum Section -->
+        <div style="display: flex; align-items: baseline; justify-content: space-between; flex-wrap: wrap; gap: 8px; margin-bottom: var(--spacing-md);">
+          <div>
+            <h2 style="font-size: 1.7rem; margin: 0;">Trilha Estruturada por Nível (CEFR)</h2>
+            <p style="margin: 4px 0 0 0; font-size: 0.92rem; color: var(--color-text-sub);">
+              Aulas progressivas adaptadas em tempo real aos seus pontos de melhoria.
+            </p>
+          </div>
+        </div>
+
+        <div id="level-tabs" style="display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: var(--spacing-lg);"></div>
+
+        <div class="missions-list mission-grid"></div>
       </div>
     `;
 
-    this.renderMissions();
+    this.setupLanguageAndMode();
+    this.setupFreeAndErrorLessons();
+    this.renderLevelTabs();
+    this.renderLessons();
+  }
 
-    // Restore language preference
-    const savedLang = localStorage.getItem('immergo_language');
-    const savedFromLang = localStorage.getItem('immergo_from_language');
+  renderInsightsSkeleton() {
+    const panel = this.querySelector('#ai-insights-panel');
+    if (!panel) return;
+    panel.innerHTML = `
+      <div class="glass-panel" style="padding: var(--spacing-lg);">
+        <div class="skeleton" style="width: 45%; height: 14px; margin-bottom: 12px;"></div>
+        <div class="skeleton" style="width: 65%; height: 26px; margin-bottom: 16px;"></div>
+        <div class="skeleton" style="width: 100%; height: 12px; margin-bottom: 12px;"></div>
+        <div class="skeleton" style="width: 85%; height: 14px;"></div>
+      </div>
+      <div class="glass-panel" style="padding: var(--spacing-lg);">
+        <div class="skeleton" style="width: 40%; height: 14px; margin-bottom: 12px;"></div>
+        <div class="skeleton" style="width: 75%; height: 22px; margin-bottom: 14px;"></div>
+        <div class="skeleton" style="width: 100%; height: 54px;"></div>
+      </div>
+    `;
+  }
 
+  setupLanguageAndMode() {
     const toSelect = this.querySelector('#to-lang');
     const fromSelect = this.querySelector('#from-lang');
 
-    if (savedLang) {
-      toSelect.value = savedLang;
+    const savedTo = localStorage.getItem('immergo_language');
+    const savedFrom = localStorage.getItem('immergo_from_language');
+
+    if (savedTo) {
+      toSelect.value = savedTo;
     } else {
-      // Default practice to French if first time to avoid English/English default
-      const options = Array.from(toSelect.options);
-      const frenchOption = options.find(o => o.text.includes('French'));
-      if (frenchOption) toSelect.value = frenchOption.text;
+      const en = Array.from(toSelect.options).find(o => o.text.includes('English'));
+      if (en) toSelect.value = en.text;
     }
 
-    // Default From language to English if not set
-    if (savedFromLang) {
-      fromSelect.value = savedFromLang;
+    if (savedFrom) {
+      fromSelect.value = savedFrom;
     } else {
-      // Try to find English
-      const options = Array.from(fromSelect.options);
-      const englishOption = options.find(o => o.text.includes('English'));
-      if (englishOption) fromSelect.value = englishOption.text;
+      const pt = Array.from(fromSelect.options).find(o => o.text.includes('Portuguese'));
+      if (pt) fromSelect.value = pt.text;
     }
 
+    fromSelect.addEventListener('change', () => {
+      localStorage.setItem('immergo_from_language', fromSelect.value);
+    });
+    toSelect.addEventListener('change', () => {
+      localStorage.setItem('immergo_language', toSelect.value);
+    });
 
-    // Mode Logic
-    const modeImmersive = this.querySelector('#mode-immersive');
     const modeTeacher = this.querySelector('#mode-teacher');
-    let currentMode = localStorage.getItem('immergo_mode') || 'immergo_immersive'; // Default to immersive
+    const modeImmersive = this.querySelector('#mode-immersive');
+    let currentMode = localStorage.getItem('immergo_mode') || 'preply_tutor';
+    if (currentMode === 'immergo_teacher') currentMode = 'preply_tutor';
 
     const updateModeUI = () => {
-      const activeBorder = 'var(--color-accent-primary)';
-      const activeBg = 'rgba(163, 177, 138, 0.1)';
-
-      // Reset styles
       [modeTeacher, modeImmersive].forEach(btn => {
-        btn.style.background = 'rgba(255,255,255,0.03)';
-        btn.style.borderColor = 'transparent';
-        btn.style.boxShadow = 'none';
-        btn.querySelector('div > div:first-child').style.color = 'var(--color-text-main)'; // Title
-        btn.style.transform = 'translateY(0)';
+        btn.style.background = 'var(--color-surface-elevated)';
+        btn.style.color = 'var(--color-text-sub)';
+        btn.style.border = 'var(--glass-border)';
       });
-
-      // Active State
-      const activeBtn = currentMode === 'immergo_teacher' ? modeTeacher : modeImmersive;
-
-      activeBtn.style.background = activeBg;
-      activeBtn.style.borderColor = activeBorder;
-      activeBtn.style.boxShadow = '0 4px 20px rgba(163, 177, 138, 0.15)';
-      activeBtn.querySelector('div > div:first-child').style.color = activeBorder;
-      activeBtn.style.transform = 'translateY(-2px)';
+      const activeBtn = currentMode === 'immergo_immersive' ? modeImmersive : modeTeacher;
+      activeBtn.style.background = 'var(--color-accent-primary)';
+      activeBtn.style.color = '#ffffff';
+      activeBtn.style.border = '1px solid var(--color-accent-primary)';
     };
 
+    modeTeacher.addEventListener('click', () => {
+      currentMode = 'preply_tutor';
+      localStorage.setItem('immergo_mode', currentMode);
+      updateModeUI();
+    });
     modeImmersive.addEventListener('click', () => {
       currentMode = 'immergo_immersive';
       localStorage.setItem('immergo_mode', currentMode);
       updateModeUI();
     });
-
-    modeTeacher.addEventListener('click', () => {
-      currentMode = 'immergo_teacher';
-      localStorage.setItem('immergo_mode', currentMode);
-      updateModeUI();
-    });
-
+    localStorage.setItem('immergo_mode', currentMode);
     updateModeUI();
+  }
 
-    // Add change listeners to persist immediately
-    fromSelect.addEventListener('change', () => {
-      localStorage.setItem('immergo_from_language', fromSelect.value);
+  setupFreeAndErrorLessons() {
+    const input = this.querySelector('#free-topic-input');
+    const freeBtn = this.querySelector('#start-free-lesson-btn');
+    const errorReviewBtn = this.querySelector('#start-error-review-btn');
+    const flashcardsBtn = this.querySelector('#open-flashcards-btn');
+
+    flashcardsBtn?.addEventListener('click', () => {
+      this.dispatchEvent(new CustomEvent('navigate', {
+        bubbles: true,
+        detail: { view: 'flashcards' },
+      }));
     });
 
-    toSelect.addEventListener('change', () => {
-      localStorage.setItem('immergo_language', toSelect.value);
+    this.querySelectorAll('.topic-chip').forEach(chip => {
+      chip.addEventListener('click', () => {
+        input.value = chip.dataset.topic;
+        input.focus();
+      });
+    });
+
+    const startFree = () => {
+      const topic = (input.value || '').trim() || 'Everyday English Conversation & Fluency';
+      this.launchLesson({
+        id: `free-${Date.now()}`,
+        level: this.selectedLevel,
+        order: 0,
+        module: 'Open Conversation',
+        title: `Free Topic: ${topic}`,
+        methodology: 'CLT',
+        grammar_focus: 'Adaptive to your CEFR level & recurring weak areas',
+        communicative_function: `Natural 1-on-1 conversation about ${topic}`,
+        vocabulary_focus: `Topic vocabulary for: ${topic}`,
+        pronunciation_focus: 'Natural rhythm, stress & connected speech',
+        desc: `Prática aberta 1-on-1 focada em: ${topic}`,
+        warmup_prompt: `Let's warm up briefly and dive into "${topic}".`,
+        roleplay_scenario: `Interactive Preply session exploring "${topic}" with real-world follow-up questions.`,
+        target_role: 'Preply English Tutor',
+        is_free_topic: true,
+        custom_topic: topic,
+        objectives: [
+          `Speak naturally about "${topic}" (70–80% student talking time)`,
+          'Practice targeted corrections from your adaptive profile',
+          'Wrap up with concrete feedback & homework'
+        ]
+      });
+    };
+
+    freeBtn.addEventListener('click', startFree);
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') startFree();
+    });
+
+    errorReviewBtn.addEventListener('click', () => {
+      const weakAreas = (this.profile?.top_weak_areas || []).slice(0, 4).map(w => w.area);
+      const focusSummary = weakAreas.length ? weakAreas.join(', ') : 'past tenses, prepositions & fluency';
+      this.launchLesson({
+        id: `review-${Date.now()}`,
+        level: this.profile?.estimated_level || this.selectedLevel,
+        order: 0,
+        module: 'Targeted Error Review',
+        title: 'Revisão Focada nos Meus Erros',
+        methodology: 'PPP',
+        grammar_focus: `Spaced-repetition drill on: ${focusSummary}`,
+        communicative_function: 'Self-correction and mastery of recurring mistakes',
+        vocabulary_focus: 'Natural phrasing replacements for past mistakes',
+        pronunciation_focus: 'Clear endings & natural phrasing',
+        desc: `Sessão intensiva para corrigir e consolidar: ${focusSummary}`,
+        warmup_prompt: 'Ready for a quick targeted review of your recent speaking focus areas?',
+        roleplay_scenario: `Structured 1-on-1 drill & mini-roleplay specifically targeting: ${focusSummary}`,
+        target_role: 'Preply English Tutor',
+        is_error_review: true,
+        objectives: [
+          'Review 2–3 exact sentences from your recent lessons',
+          'Practice natural replacements in spontaneous speech',
+          'Confirm mastery with zero repeated slips'
+        ]
+      });
     });
   }
 
-  renderMissions() {
-    const missions = missionsData;
+  renderAiInsightsPanel() {
+    const panel = this.querySelector('#ai-insights-panel');
+    if (!panel) return;
+
+    const total = this.profile?.total_lessons || 0;
+    const avg = this.profile?.average_score || 0;
+    const estLevel = this.profile?.estimated_level || 'A2';
+    const subscore = Math.max(0, Math.min(100, Number(this.profile?.estimated_subscore ?? 25)));
+    const reasoning = this.profile?.level_reasoning || 'Conclua sua primeira aula para a IA estimar seu nível CEFR e montar seu plano adaptativo.';
+    const weakAreas = this.profile?.top_weak_areas || [];
+    const mistakes = this.profile?.detailed_mistakes || [];
+    const cefrSteps = ['A1', 'A2', 'B1', 'B2', 'C1', 'C2'];
+
+    panel.innerHTML = `
+      <!-- Left: AI-Estimated CEFR Level & Stats -->
+      <div class="glass-panel" style="padding: var(--spacing-lg); display: flex; flex-direction: column; justify-content: space-between; gap: 14px;">
+        <div>
+          <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; margin-bottom: 12px;">
+            <div>
+              <span style="font-size: 0.74rem; text-transform: uppercase; letter-spacing: 0.8px; color: var(--color-text-muted); font-weight: 700;">Nível Estimado pela IA</span>
+              <h3 style="margin: 2px 0 0 0; font-size: 1.45rem; color: var(--color-accent-secondary);">
+                CEFR ${estLevel} <span style="font-size: 0.95rem; color: var(--color-text-sub); font-weight: 600;">(${subscore}/100)</span>
+              </h3>
+            </div>
+            <div style="display: flex; gap: 12px; text-align: right;">
+              <div>
+                <span style="font-size: 0.7rem; text-transform: uppercase; color: var(--color-text-muted); display: block;">Aulas</span>
+                <strong style="font-size: 1.05rem;">${total}</strong>
+              </div>
+              <div>
+                <span style="font-size: 0.7rem; text-transform: uppercase; color: var(--color-text-muted); display: block;">Média</span>
+                <strong style="font-size: 1.05rem; color: var(--color-warning);">${avg ? `${avg} ★` : '—'}</strong>
+              </div>
+            </div>
+          </div>
+
+          <div style="width: 100%; height: 10px; border-radius: 999px; background: var(--color-surface-elevated); overflow: hidden; margin-bottom: 8px;">
+            <div style="width: ${subscore}%; height: 100%; background: linear-gradient(90deg, var(--color-success), var(--color-accent-secondary)); border-radius: 999px; transition: width 0.5s ease;"></div>
+          </div>
+
+          <div style="display: flex; justify-content: space-between; font-size: 0.75rem; font-weight: 700; color: var(--color-text-muted); margin-bottom: 12px;">
+            ${cefrSteps.map(s => `<span style="${s === estLevel ? 'color: var(--color-accent-secondary); font-weight: 900;' : ''}">${s}</span>`).join('')}
+          </div>
+
+          <p style="margin: 0; font-size: 0.88rem; color: var(--color-text-sub); line-height: 1.5;">${reasoning}</p>
+        </div>
+
+        <div style="display: flex; justify-content: flex-end;">
+          <button id="toggle-history-btn" class="btn-secondary" style="font-size: 0.82rem; padding: 7px 14px;">
+            ${this.showHistory ? 'Ocultar Histórico' : `Ver Histórico de Feedback (${total})`}
+          </button>
+        </div>
+      </div>
+
+      <!-- Right: Where You Need to Improve -->
+      <div class="glass-panel" style="padding: var(--spacing-lg); border-left: 4px solid var(--color-danger); display: flex; flex-direction: column; gap: 12px;">
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+          <div>
+            <span style="font-size: 0.74rem; text-transform: uppercase; letter-spacing: 0.8px; color: var(--color-danger); font-weight: 700;">Diagnóstico Contínuo</span>
+            <h3 style="margin: 2px 0 0 0; font-size: 1.25rem;">Onde Você Precisa Melhorar</h3>
+          </div>
+        </div>
+
+        ${weakAreas.length ? `
+          <div style="display: flex; flex-wrap: wrap; gap: 6px;">
+            ${weakAreas.slice(0, 6).map(w => `
+              <span style="font-size: 0.74rem; padding: 4px 10px; border-radius: 999px; background: var(--color-warning-bg); color: var(--color-warning); font-weight: 700;">
+                #${w.area} (${w.count}x)
+              </span>
+            `).join('')}
+          </div>
+        ` : ''}
+
+        ${mistakes.length ? `
+          <div style="display: flex; flex-direction: column; gap: 8px; max-height: 210px; overflow-y: auto; padding-right: 4px;">
+            ${mistakes.slice(0, 3).map(m => `
+              <div style="padding: 10px 12px; border-radius: var(--radius-sm); background: var(--color-surface-elevated); font-size: 0.84rem;">
+                <div style="color: var(--color-danger); text-decoration: line-through; margin-bottom: 2px;">"${m.quote || ''}"</div>
+                <div style="color: var(--color-success); font-weight: 700; margin-bottom: 3px;">➔ "${m.correction || ''}"</div>
+                ${m.explanation ? `<div style="color: var(--color-text-sub); font-size: 0.8rem; line-height: 1.4;">${m.explanation}</div>` : ''}
+              </div>
+            `).join('')}
+          </div>
+        ` : `<p style="margin: 0; font-size: 0.88rem; color: var(--color-text-sub);">Seus erros exatos e correções naturais aparecerão aqui após sua próxima aula.</p>`}
+      </div>
+    `;
+
+    const toggleBtn = panel.querySelector('#toggle-history-btn');
+    if (toggleBtn) {
+      toggleBtn.addEventListener('click', () => {
+        this.showHistory = !this.showHistory;
+        this.renderAiInsightsPanel();
+        this.renderHistoryPanel();
+      });
+    }
+
+    const fcBtn = this.querySelector('#open-flashcards-btn');
+    if (fcBtn) {
+      fcBtn.innerHTML = this.flashcardsDueCount > 0
+        ? `🃏 Revisar seus erros aqui (${this.flashcardsDueCount})`
+        : `🃏 Revisar seus erros aqui`;
+    }
+  }
+
+  renderHistoryPanel() {
+    const panel = this.querySelector('#history-panel');
+    if (!panel) return;
+    if (!this.showHistory) {
+      panel.style.display = 'none';
+      return;
+    }
+    panel.style.display = 'block';
+
+    if (!this.history.length) {
+      panel.innerHTML = `
+        <div class="glass-panel" style="padding: var(--spacing-lg); text-align: center; color: var(--color-text-sub);">
+          Nenhum log de aula encontrado ainda.
+        </div>
+      `;
+      return;
+    }
+
+    panel.innerHTML = `
+      <div class="glass-panel" style="padding: var(--spacing-lg); max-height: 380px; overflow-y: auto;">
+        <h3 style="margin: 0 0 var(--spacing-md) 0; font-size: 1.1rem;">📚 Histórico de Feedbacks</h3>
+        <div style="display: flex; flex-direction: column; gap: 10px;">
+          ${this.history.slice(0, 10).map(item => `
+            <div style="padding: 12px 14px; border-radius: var(--radius-md); background: var(--color-surface-elevated); border: var(--glass-border);">
+              <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 4px;">
+                <div>
+                  <span style="font-size: 0.72rem; font-weight: 800; padding: 2px 8px; border-radius: 6px; background: rgba(var(--color-accent-primary-rgb), 0.2); color: var(--color-accent-secondary); margin-right: 8px;">${item.level}</span>
+                  <strong>${item.title}</strong>
+                </div>
+                <span style="font-weight: 700; color: var(--color-warning);">${'★'.repeat(item.score)}${'☆'.repeat(Math.max(0, 5 - item.score))}</span>
+              </div>
+              ${item.summary_note ? `<p style="margin: 4px 0 8px 0; font-size: 0.85rem; color: var(--color-text-sub);">${item.summary_note}</p>` : ''}
+              <div style="display: flex; flex-wrap: wrap; gap: 6px;">
+                ${(item.weak_areas || []).map(tag => `<span style="font-size: 0.72rem; padding: 2px 8px; border-radius: 999px; background: var(--color-warning-bg); color: var(--color-warning);">#${tag}</span>`).join('')}
+              </div>
+            </div>
+          `).join('')}
+        </div>
+      </div>
+    `;
+  }
+
+  renderLevelTabs() {
+    const container = this.querySelector('#level-tabs');
+    if (!container) return;
+    const levels = ['A1', 'A2', 'B1', 'B2', 'C1', 'C2'];
+    const completedSet = new Set(this.profile?.completed_lesson_ids || []);
+
+    container.innerHTML = levels.map(lvl => {
+      const levelLessons = lessonsData.filter(l => l.level === lvl);
+      const doneCount = levelLessons.filter(l => completedSet.has(l.id)).length;
+      const isActive = this.selectedLevel === lvl;
+
+      return `
+        <button data-level="${lvl}" style="
+          padding: 10px 18px;
+          border-radius: var(--radius-md);
+          border: ${isActive ? '1px solid var(--color-accent-primary)' : 'var(--glass-border)'};
+          background: ${isActive ? 'var(--color-accent-primary)' : 'var(--color-surface)'};
+          color: ${isActive ? '#ffffff' : 'var(--color-text-main)'};
+          font-weight: 700;
+          font-size: 0.9rem;
+        ">
+          ${lvl} <span style="opacity: 0.85; font-size: 0.8rem; margin-left: 4px;">(${doneCount}/${levelLessons.length})</span>
+        </button>
+      `;
+    }).join('');
+
+    container.querySelectorAll('button[data-level]').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        this.selectedLevel = btn.dataset.level;
+        localStorage.setItem('preply_level', this.selectedLevel);
+        this.renderLevelTabs();
+        this.renderLessons();
+        try {
+          await fetch('/api/lessons/profile/level', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ level: this.selectedLevel }),
+          });
+        } catch {
+          // Non-blocking
+        }
+      });
+    });
+  }
+
+  renderLessons() {
     const listContainer = this.querySelector('.missions-list');
+    if (!listContainer) return;
+    listContainer.innerHTML = '';
 
-    const getMissionIcon = (title) => {
-      if (title.includes('Coffee')) return '☕';
-      if (title.includes('Bus')) return '🚌';
-      if (title.includes('dinner')) return '🍕';
-      if (title.includes('Shirt')) return '👕';
-      if (title.includes('directions')) return '🗺️';
-      if (title.includes('Symptoms')) return '🤒';
-      if (title.includes('Market')) return '🍎';
-      if (title.includes('rent')) return '🏠';
-      if (title.includes('Job')) return '💼';
-      return '📜';
-    };
+    const completedSet = new Set(this.profile?.completed_lesson_ids || []);
+    const lessons = lessonsData
+      .filter(l => l.level === this.selectedLevel)
+      .sort((a, b) => a.order - b.order);
 
-    missions.forEach(mission => {
+    lessons.forEach(lesson => {
+      const isCompleted = completedSet.has(lesson.id);
       const card = document.createElement('div');
       card.className = 'card mission-card';
       card.style.cursor = 'pointer';
-
-      let badgeColor = '#8bc34a';
-      if (mission.difficulty === 'Medium') badgeColor = '#ffc107';
-      if (mission.difficulty === 'Hard') badgeColor = '#ff9800';
-      if (mission.difficulty === 'Expert') badgeColor = '#f44336';
-
-      // Highlight Easy for the first one if we wanted, but sticking to logic
-      if (mission.difficulty === 'Easy') badgeColor = '#8bc34a';
-
+      if (isCompleted) {
+        card.style.borderColor = 'rgba(34, 197, 94, 0.45)';
+      }
 
       card.innerHTML = `
-        <div style="margin-bottom: var(--spacing-md); display: flex; justify-content: space-between; align-items: start;">
-            <div style="font-size: 2.5rem; line-height: 1;">${getMissionIcon(mission.title)}</div>
-            <span style="
-                background: ${badgeColor}22;
-                color: ${badgeColor};
-                padding: 4px 8px;
-                border-radius: var(--radius-sm);
-                font-size: 0.75rem;
-                font-weight: 800;
-                text-transform: uppercase;
-                letter-spacing: 0.5px;
-                border: 1px solid ${badgeColor}44;
-            ">${mission.difficulty}</span>
+        <div style="margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center; gap: 8px;">
+          <span style="
+            background: rgba(var(--color-accent-primary-rgb), 0.18);
+            color: var(--color-accent-secondary);
+            padding: 4px 10px;
+            border-radius: var(--radius-sm);
+            font-size: 0.74rem;
+            font-weight: 800;
+          ">${lesson.level} • Aula ${lesson.order}</span>
+          <div style="display: flex; gap: 6px; align-items: center;">
+            ${isCompleted ? `<span style="font-size: 0.75rem; font-weight: 700; color: var(--color-success);">✓ Concluída</span>` : ''}
+            <span style="font-size: 0.72rem; padding: 3px 8px; border-radius: 6px; background: var(--color-surface-elevated); color: var(--color-text-sub); font-weight: 700;">${lesson.methodology}</span>
+          </div>
         </div>
-        <h3 style="margin: 0 0 var(--spacing-sm) 0; font-size: 1.4rem; line-height: 1.2;">${mission.title}</h3>
-        <p style="margin: 0; font-size: 0.95rem; opacity: 0.7; line-height: 1.5;">${mission.desc}</p>
-        <div style="margin-top: auto; padding-top: var(--spacing-md); font-size: 0.8rem; color: var(--color-accent-secondary); font-weight: bold; opacity: 0.8;">
-            Roleplay: ${mission.target_role}
+        <div style="margin-bottom: 4px; font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.8px; color: var(--color-text-muted); font-weight: 700;">
+          ${lesson.module || 'Core Module'}
+        </div>
+        <h3 style="margin: 0 0 8px 0; font-size: 1.15rem; line-height: 1.3;">${lesson.title}</h3>
+        <p style="margin: 0 0 12px 0; font-size: 0.88rem; color: var(--color-text-sub); line-height: 1.45;">${lesson.desc}</p>
+        <div style="margin-top: auto; padding-top: 10px; border-top: var(--glass-border); font-size: 0.78rem; color: var(--color-accent-secondary); font-weight: 600;">
+          Foco: ${lesson.grammar_focus}
         </div>
       `;
 
-      card.addEventListener('click', () => {
-        const toSelect = this.querySelector('#to-lang');
-        const fromSelect = this.querySelector('#from-lang');
-
-        const selectedToLang = toSelect.value;
-        const selectedFromLang = fromSelect.value;
-
-        // currentMode is defined in the closure above? No, it's local to connectedCallback.
-        // We need to re-read it or make it accessible. Let's re-read from localStorage for simplicity and safety
-        const selectedMode = localStorage.getItem('immergo_mode') || 'immergo_immersive';
-
-        // Save preference
-        localStorage.setItem('immergo_language', selectedToLang);
-        localStorage.setItem('immergo_from_language', selectedFromLang);
-
-        this.dispatchEvent(new CustomEvent('navigate', {
-          bubbles: true,
-          detail: {
-            view: 'chat',
-            mission: mission,
-            language: selectedToLang,
-            fromLanguage: selectedFromLang,
-            mode: selectedMode
-          }
-        }));
-      });
-
+      card.addEventListener('click', () => this.launchLesson(lesson));
       listContainer.appendChild(card);
     });
+  }
+
+  launchLesson(lesson) {
+    const toSelect = this.querySelector('#to-lang');
+    const fromSelect = this.querySelector('#from-lang');
+    const selectedToLang = toSelect.value;
+    const selectedFromLang = fromSelect.value;
+    const selectedMode = localStorage.getItem('immergo_mode') || 'preply_tutor';
+
+    localStorage.setItem('immergo_language', selectedToLang);
+    localStorage.setItem('immergo_from_language', selectedFromLang);
+
+    this.dispatchEvent(new CustomEvent('navigate', {
+      bubbles: true,
+      detail: {
+        view: 'chat',
+        mission: lesson,
+        language: selectedToLang,
+        fromLanguage: selectedFromLang,
+        mode: selectedMode,
+      }
+    }));
   }
 }
 

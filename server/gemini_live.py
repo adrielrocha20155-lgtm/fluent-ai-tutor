@@ -17,6 +17,7 @@ from google.genai import types
 import asyncio
 import base64
 import json
+import os
 import logging
 import inspect
 from typing import Optional, List, Dict, Callable
@@ -35,8 +36,14 @@ class GeminiLive:
         print(f"  Model: {model}")
         print(f"  Input Sample Rate: {input_sample_rate}")
         
-        # Initialize client
-        self.client = genai.Client(vertexai=True, project=project_id, location=location)
+        # Initialize client (prefer GEMINI_API_KEY if set, otherwise use Vertex AI)
+        api_key = os.getenv("GEMINI_API_KEY")
+        if api_key and api_key != "your-api-key":
+            print("  Auth Mode: Gemini API Key (Google AI Studio)")
+            self.client = genai.Client(api_key=api_key)
+        else:
+            print("  Auth Mode: Vertex AI")
+            self.client = genai.Client(vertexai=True, project=project_id, location=location)
         self.tool_mapping = {}
 
     def register_tool(self, func: Callable):
@@ -117,6 +124,14 @@ class GeminiLive:
         if "input_audio_transcription" in setup_config:
             print("💬 input_audio_transcription ENABLED")
             config_args["input_audio_transcription"] = types.AudioTranscriptionConfig()
+
+        # Enable sliding-window context compression for long 1-on-1 lessons
+        try:
+            config_args["context_window_compression"] = types.ContextWindowCompressionConfig(
+                sliding_window=types.SlidingWindow()
+            )
+        except Exception as e:
+            logger.warning(f"Could not enable context_window_compression: {e}")
 
         config = types.LiveConnectConfig(**config_args)
         
@@ -257,6 +272,7 @@ class GeminiLive:
                                     await session.send_tool_response(function_responses=function_responses)
 
                 except Exception as e:
+                    logger.error(f"Gemini Live receive_loop error: {e}")
                     await event_queue.put({"type": "error", "error": str(e)})
                 finally:
                     await event_queue.put(None)

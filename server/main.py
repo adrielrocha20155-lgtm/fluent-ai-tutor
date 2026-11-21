@@ -20,12 +20,13 @@ import logging
 import time
 import uuid
 import requests
-from typing import Dict, Optional
+from typing import Dict, Optional, List, Any
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Request, HTTPException, Depends
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel, Field
 
 from dotenv import load_dotenv
 from server.recaptcha_validator import RecaptchaValidator
@@ -33,6 +34,17 @@ from server.gemini_live import GeminiLive
 from server.fingerprint import generate_fingerprint
 from server.simple_tracker import simpletrack
 from server.config_utils import get_project_id
+from server.db import (
+    init_db,
+    log_lesson,
+    get_lesson_history,
+    get_learning_profile,
+    set_current_level,
+    add_flashcards,
+    get_due_flashcards,
+    review_flashcard,
+    get_all_mistakes_and_weak_areas,
+)
 
 
 # Rate Limiting
@@ -54,8 +66,8 @@ logger = logging.getLogger(__name__)
 PROJECT_ID = get_project_id()
 LOCATION = os.getenv("LOCATION", "us-central1")
 MODEL = os.getenv("MODEL", "gemini-live-2.5-flash-native-audio")
-# Use a very long timeout for dev
-SESSION_TIME_LIMIT = int(os.getenv("SESSION_TIME_LIMIT", "180"))
+# Use a generous timeout for 1-on-1 lessons (15 minutes)
+SESSION_TIME_LIMIT = int(os.getenv("SESSION_TIME_LIMIT", "900"))
 RECAPTCHA_SITE_KEY = os.getenv("RECAPTCHA_SITE_KEY")
 RECAPTCHA_SCORE_THRESHOLD = float(os.getenv("RECAPTCHA_SCORE_THRESHOLD", "0.5"))
 REDIS_URL = os.getenv("REDIS_URL")
@@ -94,7 +106,9 @@ app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 @app.on_event("startup")
 async def startup_event():
-    """Test Redis connection on startup."""
+    """Initialize SQLite DB and test Redis connection on startup."""
+    init_db()
+    logger.info("✅ SQLite learning database initialized")
     if REDIS_URL and not DEV_MODE:
         try:
             logger.info(f"Testing Redis connection to: {REDIS_URL.split('@')[-1] if '@' in REDIS_URL else REDIS_URL}")
@@ -149,6 +163,408 @@ async def get_status():
         "mode": mode,
         "missing": missing
     }
+
+class LessonLogPayload(BaseModel):
+    lesson_id: str
+    level: str
+    title: str
+    topic: str = ""
+    grammar_focus: str = ""
+    mode: str = "preply_tutor"
+    score: int = Field(ge=1, le=5)
+    estimated_cefr: str = ""
+    cefr_score_0_100: int = 0
+    level_reasoning: str = ""
+    went_well: List[str] = Field(default_factory=list)
+    needs_work: List[Any] = Field(default_factory=list)
+    weak_areas: List[str] = Field(default_factory=list)
+    homework: str = ""
+    summary_note: str = ""
+    transcript_summary: str = ""
+    duration_seconds: int = 0
+
+
+class LevelUpdatePayload(BaseModel):
+    level: str
+
+
+class FlashcardReviewPayload(BaseModel):
+    rating: str = Field(pattern="^(again|hard|good|easy)$")
+
+
+class EvaluateTranscriptPayload(BaseModel):
+    lesson_id: str
+    level: str
+    title: str
+    topic: str = ""
+    grammar_focus: str = ""
+    mode: str = "preply_tutor"
+    native_language: str = "Portuguese"
+    transcript: List[Dict[str, str]] = Field(default_factory=list)
+    duration_seconds: int = 0
+
+
+@app.get("/api/lessons/history")
+async def api_lesson_history(limit: int = 50):
+    """Return past lesson feedback logs and aggregated learning profile."""
+    return {
+        "history": get_lesson_history(limit=limit),
+        "profile": get_learning_profile(),
+    }
+
+
+@app.get("/api/lessons/profile")
+async def api_lesson_profile():
+    """Return aggregated weakness profile for adaptive prompt injection."""
+    return get_learning_profile()
+
+
+@app.post("/api/lessons/profile/level")
+async def api_set_level(payload: LevelUpdatePayload):
+    """Update the student's current CEFR level."""
+    set_current_level(payload.level)
+    return {"status": "ok", "current_level": payload.level}
+
+
+async def _generate_flashcards_from_mistakes(
+    mistakes: List[Any],
+    weak_areas: List[str],
+    level: str = "A2",
+    native_language: str = "Portuguese",
+    source_lesson_id: str = "",
+    transcript_excerpts: Optional[List[str]] = None,
+) -> List[Dict[str, Any]]:
+    """Generate Anki-style active-recall flashcards from all mistakes/transcripts, avoiding existing cards."""
+    if not mistakes and not weak_areas:
+        return []
+
+    import google.genai as genai
+    from google.genai import types
+
+    with_existing = get_due_flashcards(limit=100)
+    # Also fetch all cards (including non-due) via db if needed, or due_cards
+    existing_summary = [
+        f"- {c['front']} => {c['back_answer']}"
+        for c in with_existing.get("due_cards", [])[:30]
+    ]
+    existing_block = "\n".join(existing_summary) if existing_summary else "None yet."
+
+    mistakes_text = json.dumps(mistakes, ensure_ascii=False)
+    areas_text = ", ".join(weak_areas)
+    excerpts_text = "\n".join(transcript_excerpts or [])
+
+    prompt = f"""You are an expert Anki flashcard designer for an English learner (CEFR {level}, native language: {native_language}).
+Create 4 to 5 NEW active-recall flashcards to test what they struggle with, drawing from ALL their recorded mistakes, weak areas, and transcript excerpts below.
+
+All Recorded Mistakes: {mistakes_text}
+Weak Areas: {areas_text}
+Transcript Excerpts:
+{excerpts_text}
+
+ALREADY EXISTING FLASHCARDS (DO NOT DUPLICATE OR REPHRASE THESE):
+{existing_block}
+
+Rules:
+- NEVER repeat or rephrase any of the existing flashcards above!
+- Pick DIFFERENT mistakes from the list, OR create fresh new practice sentences/challenges targeting their weak areas (e.g., new sentences for prepositions, past simple, verb patterns, question formation).
+- Each card's "front" MUST be an active-recall prompt in {native_language} or fill-in-the-blank in English.
+- "back_answer": The exact natural English phrase/answer.
+- "back_explanation": Concise 1-sentence explanation in {native_language}.
+- "category": "Grammar", "Vocabulary/Phrasing", or "Pronunciation/Fluency".
+- "weak_area": short kebab-case tag.
+
+Return a JSON array of objects with keys: "front", "back_answer", "back_explanation", "category", "weak_area"."""
+
+    api_key = os.getenv("GEMINI_API_KEY")
+    http_opts = types.HttpOptions(timeout=10000)
+    client = (
+        genai.Client(api_key=api_key, http_options=http_opts)
+        if api_key and api_key != "your-api-key"
+        else genai.Client(vertexai=True, project=PROJECT_ID, location=LOCATION, http_options=http_opts)
+    )
+
+    cards_data = None
+    for model_name in ["gemini-flash-lite-latest", os.getenv("EVAL_MODEL", "gemini-3.5-flash")]:
+        try:
+            resp = await asyncio.wait_for(
+                client.aio.models.generate_content(
+                    model=model_name,
+                    contents=prompt,
+                    config=types.GenerateContentConfig(
+                        response_mime_type="application/json",
+                        temperature=0.3,
+                    ),
+                ),
+                timeout=10.0,
+            )
+            parsed = json.loads(resp.text)
+            if isinstance(parsed, list) and parsed:
+                cards_data = parsed
+                break
+        except Exception as e:
+            logger.warning(f"Flashcard generation with {model_name} failed: {e}")
+
+    if not cards_data:
+        cards_data = []
+        for idx, m in enumerate(mistakes):
+            if isinstance(m, dict) and m.get("quote") and m.get("correction"):
+                cards_data.append({
+                    "front": f"Corrija para o inglês natural: \"{m['quote']}\"",
+                    "back_answer": m["correction"],
+                    "back_explanation": m.get("explanation", ""),
+                    "category": m.get("category", "Grammar"),
+                    "weak_area": weak_areas[idx % len(weak_areas)] if weak_areas else "general",
+                })
+
+    return add_flashcards(cards_data, source_lesson_id=source_lesson_id)
+
+
+@app.get("/api/flashcards/due")
+async def api_get_due_flashcards(limit: int = 30):
+    """Return due flashcards and spaced-repetition stats."""
+    return get_due_flashcards(limit=limit)
+
+
+@app.post("/api/flashcards/generate")
+async def api_generate_flashcards():
+    """Generate NEW non-duplicate flashcards from all lesson mistakes and transcripts in SQLite."""
+    profile = get_learning_profile()
+    all_data = get_all_mistakes_and_weak_areas(limit_lessons=50)
+    created = await _generate_flashcards_from_mistakes(
+        mistakes=all_data.get("mistakes", []),
+        weak_areas=all_data.get("weak_areas", []),
+        level=profile.get("estimated_level", "A2"),
+        native_language="Portuguese",
+        source_lesson_id="history-sync",
+        transcript_excerpts=all_data.get("transcript_excerpts", []),
+    )
+    due_info = get_due_flashcards()
+    return {"status": "ok", "created_count": len(created), **due_info}
+
+
+@app.post("/api/flashcards/{card_id}/review")
+async def api_review_flashcard(card_id: int, payload: FlashcardReviewPayload):
+    """Record an Anki-style SM-2 review rating for a flashcard."""
+    updated = review_flashcard(card_id, payload.rating)
+    if "error" in updated:
+        raise HTTPException(status_code=404, detail=updated["error"])
+    return {"status": "ok", "card": updated, **get_due_flashcards()}
+
+
+@app.post("/api/lessons/log")
+async def api_log_lesson(payload: LessonLogPayload):
+    """Save a structured post-lesson feedback log to SQLite."""
+    record = log_lesson(
+        lesson_id=payload.lesson_id,
+        level=payload.level,
+        title=payload.title,
+        topic=payload.topic,
+        grammar_focus=payload.grammar_focus,
+        mode=payload.mode,
+        score=payload.score,
+        estimated_cefr=payload.estimated_cefr,
+        cefr_score_0_100=payload.cefr_score_0_100,
+        level_reasoning=payload.level_reasoning,
+        went_well=payload.went_well,
+        needs_work=payload.needs_work,
+        weak_areas=payload.weak_areas,
+        homework=payload.homework,
+        summary_note=payload.summary_note,
+        transcript_summary=payload.transcript_summary,
+        duration_seconds=payload.duration_seconds,
+    )
+    await _generate_flashcards_from_mistakes(
+        mistakes=payload.needs_work,
+        weak_areas=payload.weak_areas,
+        level=payload.level,
+        native_language="Portuguese",
+        source_lesson_id=payload.lesson_id,
+    )
+    await _generate_flashcards_from_mistakes(
+        mistakes=data.get("needs_work", []),
+        weak_areas=data.get("weak_areas", []),
+        level=data.get("estimated_cefr", prev_profile.get("estimated_level", "A2")),
+        native_language=payload.native_language,
+        source_lesson_id=payload.lesson_id,
+    )
+    return {"status": "ok", "record": record, "profile": get_learning_profile()}
+
+
+@app.post("/api/lessons/evaluate")
+async def api_evaluate_lesson(payload: EvaluateTranscriptPayload):
+    """Generate a structured post-lesson evaluation from transcript and save it."""
+    import google.genai as genai
+    from google.genai import types
+
+    transcript_text = "\n".join(
+        f"{item.get('speaker', 'User')}: {item.get('text', '')}"
+        for item in payload.transcript
+        if item.get("text", "").strip()
+    )
+
+    if not transcript_text.strip():
+        record = log_lesson(
+            lesson_id=payload.lesson_id,
+            level=payload.level,
+            title=payload.title,
+            topic=payload.topic,
+            grammar_focus=payload.grammar_focus,
+            mode=payload.mode,
+            score=3,
+            went_well=["Started the speaking session and practiced live interaction."],
+            needs_work=[
+                {
+                    "category": "Fluency",
+                    "quote": "(Short session)",
+                    "correction": "Try speaking at least 4-5 full sentences in your next session.",
+                    "explanation": "Longer turns help your tutor evaluate grammar and pronunciation.",
+                }
+            ],
+            weak_areas=["fluency-hesitation"],
+            homework="Practice 5 sentences aloud using today's target structure.",
+            summary_note="Session ended early before full evaluation.",
+            transcript_summary="",
+            duration_seconds=payload.duration_seconds,
+        )
+        await _generate_flashcards_from_mistakes(
+        mistakes=payload.needs_work,
+        weak_areas=payload.weak_areas,
+        level=payload.level,
+        native_language="Portuguese",
+        source_lesson_id=payload.lesson_id,
+    )
+    await _generate_flashcards_from_mistakes(
+        mistakes=data.get("needs_work", []),
+        weak_areas=data.get("weak_areas", []),
+        level=data.get("estimated_cefr", prev_profile.get("estimated_level", "A2")),
+        native_language=payload.native_language,
+        source_lesson_id=payload.lesson_id,
+    )
+    return {"status": "ok", "record": record, "profile": get_learning_profile()}
+
+    prev_profile = get_learning_profile()
+    prompt = f"""You are an expert Preply English tutor evaluating a 1-on-1 speaking lesson.
+Lesson: {payload.title} (Target CEFR Level: {payload.level})
+Grammar Focus: {payload.grammar_focus}
+Topic: {payload.topic}
+Student Native Language: {payload.native_language}
+Previous AI-Estimated CEFR Level: {prev_profile.get('estimated_level', 'A2')} ({prev_profile.get('estimated_subscore', 25)}/100)
+Previous Top Weak Areas: {', '.join(w['area'] for w in prev_profile.get('top_weak_areas', []))}
+
+Transcript:
+{transcript_text}
+
+IMPORTANT STT / ASR EVALUATION RULE (PAST SIMPLE -ed & PHONETIC NEAR-HOMOPHONES):
+- Live speech-to-text (STT) frequently drops unstressed word-final '-ed' sounds (/t/, /d/, /ɪd/), transcribing e.g. "cooked" as "cook" or "worked" as "work", and occasionally mishears acoustically similar words (e.g. "cook" -> "took", "cold" -> "code", "farofa" -> "favorable").
+- If the surrounding temporal context is clearly in the past (e.g., "yesterday", "last weekend", "on Sunday", or other past verbs like "went", "was", "did" in the same story), DO NOT penalize a missing '-ed' in the transcript as a definite grammar mistake!
+- Similarly, if a single word looks like a bizarre/illogical verb choice that is acoustically 1 consonant away from a logical word in context (e.g. "didn't took" when talking about cooking -> likely "didn't cook"), do NOT flag it as a grammar error.
+- Focus grammar corrections on unambiguous errors (e.g., wrong verb choice "make questions", missing subject "is a holiday", wrong word order). You may mention '-ed' pronunciation only as a gentle reminder if helpful.
+
+Return a JSON object with:
+- "score": integer 1 to 5 (1=needs heavy support, 3=solid for level, 5=mastered)
+- "estimated_cefr": string, your updated estimate of the student's true spoken English level ("A1", "A2", "B1", "B2", "C1", or "C2") based on grammar accuracy, vocabulary range, and fluency in this transcript + previous profile
+- "cefr_score_0_100": integer 0 to 100 on the CEFR proficiency scale (A1: 1-16, A2: 17-33, B1: 34-50, B2: 51-67, C1: 68-84, C2: 85-100)
+- "level_reasoning": 1-2 sentences in {payload.native_language} explaining why you estimate this CEFR level right now
+- "went_well": array of 2-3 specific compliments quoting good phrases/grammar the student used (in {payload.native_language}, quoting English phrases)
+- "needs_work": array of 2-4 objects, each with:
+  - "category": one of "Grammar", "Vocabulary/Phrasing", "Pronunciation/Fluency"
+  - "quote": exact quote of what the student said
+  - "correction": natural corrected English version
+  - "explanation": short friendly explanation in {payload.native_language}
+- "weak_areas": array of 2-4 short lowercase kebab-case tags (e.g. "subject-verb-agreement", "past-simple-did", "prepositions-in-on-at", "article-usage", "question-formation")
+- "homework": 1 actionable 5-minute practice task for before the next lesson (in {payload.native_language})
+- "summary_note": 1-2 sentence encouraging wrap-up and focus for next class (in {payload.native_language})
+"""
+
+    api_key = os.getenv("GEMINI_API_KEY")
+    http_opts = types.HttpOptions(timeout=12000)
+    if api_key and api_key != "your-api-key":
+        client = genai.Client(api_key=api_key, http_options=http_opts)
+    else:
+        client = genai.Client(vertexai=True, project=PROJECT_ID, location=LOCATION, http_options=http_opts)
+
+    eval_models = [
+        os.getenv("EVAL_MODEL", "gemini-3.5-flash"),
+        "gemini-flash-lite-latest",
+        "gemini-3.8-flash",
+    ]
+    data = None
+    last_err = None
+    for eval_model in eval_models:
+        try:
+            resp = await asyncio.wait_for(
+                client.aio.models.generate_content(
+                    model=eval_model,
+                    contents=prompt,
+                    config=types.GenerateContentConfig(
+                        response_mime_type="application/json",
+                        temperature=0.3,
+                    ),
+                ),
+                timeout=12.0,
+            )
+            data = json.loads(resp.text)
+            break
+        except Exception as e:
+            last_err = e
+            logger.warning(f"Evaluation with {eval_model} failed/timed out: {e}")
+
+    if data is None:
+        logger.error(f"All evaluation models failed: {last_err}")
+        data = {
+            "score": 3,
+            "estimated_cefr": prev_profile.get("estimated_level", "A2"),
+            "cefr_score_0_100": prev_profile.get("estimated_subscore", 25),
+            "level_reasoning": "Avaliação automática temporariamente indisponível; nível mantido com base no histórico.",
+            "went_well": ["Participou ativamente da aula de conversação em inglês."],
+            "needs_work": [
+                {
+                    "category": "Grammar",
+                    "quote": "Transcrição salva para revisão",
+                    "correction": "Continue praticando frases completas com o foco da aula.",
+                    "explanation": f"Foco recomendado: {payload.grammar_focus or payload.title}.",
+                }
+            ],
+            "weak_areas": ["fluency-practice"],
+            "homework": f"Revisar as expressões-chave de: {payload.title}.",
+            "summary_note": "Boa prática! A transcrição foi salva no seu histórico.",
+        }
+
+    record = log_lesson(
+        lesson_id=payload.lesson_id,
+        level=payload.level,
+        title=payload.title,
+        topic=payload.topic,
+        grammar_focus=payload.grammar_focus,
+        mode=payload.mode,
+        score=max(1, min(5, int(data.get("score", 3)))),
+        estimated_cefr=data.get("estimated_cefr", prev_profile.get("estimated_level", "A2")),
+        cefr_score_0_100=int(data.get("cefr_score_0_100", prev_profile.get("estimated_subscore", 25)) or 25),
+        level_reasoning=data.get("level_reasoning", ""),
+        went_well=data.get("went_well", []),
+        needs_work=data.get("needs_work", []),
+        weak_areas=data.get("weak_areas", []),
+        homework=data.get("homework", ""),
+        summary_note=data.get("summary_note", ""),
+        transcript_summary=transcript_text[:2000],
+        duration_seconds=payload.duration_seconds,
+    )
+    await _generate_flashcards_from_mistakes(
+        mistakes=payload.needs_work,
+        weak_areas=payload.weak_areas,
+        level=payload.level,
+        native_language="Portuguese",
+        source_lesson_id=payload.lesson_id,
+    )
+    await _generate_flashcards_from_mistakes(
+        mistakes=data.get("needs_work", []),
+        weak_areas=data.get("weak_areas", []),
+        level=data.get("estimated_cefr", prev_profile.get("estimated_level", "A2")),
+        native_language=payload.native_language,
+        source_lesson_id=payload.lesson_id,
+    )
+    return {"status": "ok", "record": record, "profile": get_learning_profile()}
+
 
 @app.get("/{full_path:path}")
 @simpletrack("page_view")

@@ -70,17 +70,10 @@ class LiveTranscript extends HTMLElement {
       container.scrollTop = container.scrollHeight;
     }
 
-    // Intelligent spacing:
-    // If we have content, and we're not starting/ending with space, check if we need one.
-    const currentText = bubble.textContent;
-    if (currentText.length > 0 && !currentText.endsWith(' ') && !text.startsWith(' ')) {
-      // Check if starts with alphanumeric (approximate check for "word")
-      if (/^[a-zA-Z0-9À-ÿ]/.test(text)) {
-        bubble.appendChild(document.createTextNode(' '));
-      }
-    }
+    if (!text) return;
 
-    // Wrap new text in a span for animation
+    // Gemini Live streams subword tokens with leading spaces at word boundaries
+    // (e.g., " cook" + "ed"), so do NOT inject artificial spaces between chunks.
     const span = document.createElement('span');
     span.textContent = text;
     span.className = 'fade-span';
@@ -146,7 +139,7 @@ class LiveTranscript extends HTMLElement {
 
         .bubble.model {
           align-self: flex-start;
-          color: #333; /* Dark text for model */
+          color: var(--color-text-main, #e0e0e0);
           text-align: left;
         }
 

@@ -1,19 +1,3 @@
-/**
- * Copyright 2026 Google LLC
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
-
 class ViewSummary extends HTMLElement {
   constructor() {
     super();
@@ -34,197 +18,158 @@ class ViewSummary extends HTMLElement {
 
     if (this._result.incomplete) {
       this.innerHTML = `
-          <div class="container text-center">
-            <h2 style="margin-top: var(--spacing-xl); color: var(--color-text-sub);">Mission Ended</h2>
-            
-            <div style="margin: var(--spacing-xxl) 0; opacity: 0.7;">
-                <svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
-                <p style="margin-top: var(--spacing-md); font-size: 1.1rem;">
-                    You didn't complete the mission objectives.<br>
-                    No score awarded this time.
-                </p>
-            </div>
-
-            <div style="flex: 1;"></div>
-
-            <div style="
-                margin-top: var(--spacing-sm);
-                margin-bottom: var(--spacing-xl);
-                padding: var(--spacing-xl);
-                background: linear-gradient(135deg, rgba(var(--color-accent-primary-rgb), 0.1) 0%, rgba(var(--color-accent-secondary-rgb), 0.1) 100%);
-                border-radius: var(--radius-lg);
-                text-align: center;
-                border: 1px dashed var(--color-accent-primary);
-            ">
-                <h3 style="margin-bottom: var(--spacing-sm); color: var(--color-accent-primary);"> Build Your Own Version </h3>
-                <p style="margin-bottom: var(--spacing-lg); opacity: 0.8; line-height: 1.5;">
-                    Add more missions or features <br>
-                </p>
-                
-                <div style="display: flex; flex-wrap: wrap; justify-content: center; gap: 12px;">
-                    <a href="https://github.com/ZackAkil/immersive-language-learning-with-live-api" target="_blank" style="
-                        display: inline-flex;
-                        align-items: center;
-                        gap: 12px;
-                        background: var(--color-surface);
-                        color: var(--color-text-main);
-                        padding: 14px 28px;
-                        border: 2px dashed var(--color-accent-primary);
-                        border-radius: var(--radius-md);
-                        text-decoration: none;
-                        font-weight: 800;
-                        box-shadow: var(--shadow-sm);
-                        transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-                        backdrop-filter: blur(10px);
-                        font-size: 1.1rem;
-                    " onmouseover="this.style.transform='translateY(-3px)'; this.style.boxShadow='var(--shadow-md)'; this.style.background='var(--color-bg)';" onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='var(--shadow-sm)'; this.style.background='var(--color-surface)';" >
-                        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/></svg>
-                        Fork on GitHub
-                    </a>
-                </div>
-            </div>
-            <button id="home-btn" class="btn-primary">Back to mission list</button>
+        <div class="container text-center" style="max-width: 680px; padding-top: var(--spacing-xl); padding-bottom: var(--spacing-xxl);">
+          <div class="glass-panel" style="padding: var(--spacing-xl);">
+            <h2 style="margin-bottom: 10px;">Aula Encerrada Cedo</h2>
+            <p style="color: var(--color-text-sub); margin-bottom: var(--spacing-lg);">
+              A sessão foi encerrada antes de registrar falas suficientes para gerar o relatório detalhado.
+            </p>
+            <button id="home-btn" class="btn-primary">Voltar ao Início</button>
           </div>
-        `;
-    } else {
-      this.innerHTML = `
-          <div class="container text-center">
-            <h2 style="margin-top: var(--spacing-xl); color: var(--color-accent-secondary);">Mission Accomplished!</h2>
-            
-            <div style="margin: var(--spacing-lg) 0;">
-              ${this._result.score !== "0" && this._result.score !== 0 ? this._renderScore(this._result.score) : '<p style="font-size: 1.2rem; opacity: 0.8;">Practice session complete!</p>'}
-            </div>
-
-            <div class="card" style="text-align: left;">
-              <h4 style="border-bottom: 2px solid var(--color-bg); padding-bottom: var(--spacing-sm);">Feedback</h4>
-              <ul style="padding-left: var(--spacing-lg); color: var(--color-text-sub);">
-                ${this._result.notes.map(note => `<li>${note}</li>`).join('')}
-              </ul>
-            </div>
-
-            <div style="flex: 1;"></div>
-
-            <div style="
-                margin-top: var(--spacing-sm);
-                margin-bottom: var(--spacing-xl);
-                padding: var(--spacing-xl);
-                background: linear-gradient(135deg, rgba(var(--color-accent-primary-rgb), 0.1) 0%, rgba(var(--color-accent-secondary-rgb), 0.1) 100%);
-                border-radius: var(--radius-lg);
-                text-align: center;
-                border: 1px dashed var(--color-accent-primary);
-            ">
-                <h3 style="margin-bottom: var(--spacing-sm); color: var(--color-accent-primary);"> Build Your Own Version </h3>
-                <p style="margin-bottom: var(--spacing-lg); opacity: 0.8; line-height: 1.5;">
-                    Add more missions or features <br>
-                </p>
-                
-                <a href="https://github.com/ZackAkil/immersive-language-learning-with-live-api" target="_blank" style="
-                    display: inline-flex;
-                    align-items: center;
-                    gap: 12px;
-                    background: var(--color-surface);
-                    color: var(--color-text-main);
-                    padding: 14px 28px;
-                    border: 2px dashed var(--color-accent-primary);
-                    border-radius: var(--radius-md);
-                    text-decoration: none;
-                    font-weight: 800;
-                    box-shadow: var(--shadow-sm);
-                    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-                    backdrop-filter: blur(10px);
-                    font-size: 1.1rem;
-                " onmouseover="this.style.transform='translateY(-3px)'; this.style.boxShadow='var(--shadow-md)'; this.style.background='var(--color-bg)';" onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='var(--shadow-sm)'; this.style.background='var(--color-surface)';" >
-                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/></svg>
-                    Fork on GitHub
-                </a>
-            </div>
-
-            <button id="home-btn" class="btn-primary">Back to mission list</button>
-          </div>
-        `;
-    }
-
-    // Add common button style if not in CSS, or duplicate online styles for now to be safe as I see inline styles used before
-    const btn = this.querySelector('#home-btn');
-    btn.style.cssText = `
-        background: var(--color-accent-primary);
-        color: white;
-        padding: 20px var(--spacing-xl);
-        font-size: 1.25rem;
-        font-weight: 800;
-        border-radius: var(--radius-lg);
-        width: 100%;
-        margin-bottom: var(--spacing-xxl);
-        box-shadow: 0 10px 20px -5px rgba(0,0,0,0.3);
-        border: 1px solid rgba(255,255,255,0.1);
-        cursor: pointer;
-        transition: all 0.3s cubic-bezier(0.19, 1, 0.22, 1);
-        text-transform: uppercase;
-        letter-spacing: 0.05em;
-    `;
-
-    btn.onmouseover = () => {
-      btn.style.transform = 'translateY(-4px) scale(1.01)';
-      btn.style.boxShadow = '0 15px 30px -10px rgba(163, 177, 138, 0.4)';
-      btn.style.filter = 'brightness(1.1)';
-    };
-    btn.onmouseout = () => {
-      btn.style.transform = 'translateY(0) scale(1)';
-      btn.style.boxShadow = '0 10px 20px -5px rgba(0,0,0,0.3)';
-      btn.style.filter = 'brightness(1)';
-    };
-
-    btn.addEventListener('click', () => {
-      this.dispatchEvent(new CustomEvent('navigate', {
-        bubbles: true,
-        detail: { view: 'missions', mission: null, result: null }
-      }));
-    });
-  }
-  _renderScore(score) {
-    const levels = [
-      { id: '1', title: 'Tiro', stars: 1 },
-      { id: '2', title: 'Proficiens', stars: 2 },
-      { id: '3', title: 'Peritus', stars: 3 }
-    ];
-
-    const currentLevel = levels.find(l => l.id === score.toString()) || levels[0];
-    const descriptions = {
-      '1': 'You needed a lot of help',
-      '2': 'A little help',
-      '3': 'No help, fluid'
-    };
-
-    const starIcon = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon></svg>`;
-
-    const scaleHtml = levels.map(level => {
-      const isCurrent = level.id === score.toString();
-      const opacity = isCurrent ? '1' : '0.3';
-      const color = isCurrent ? 'var(--color-accent-primary)' : 'var(--color-text-main)';
-      const weight = isCurrent ? 'bold' : 'normal';
-      const fontSize = isCurrent ? '1.1rem' : '0.9rem';
-
-      // Generate stars
-      let starsHtml = '';
-      for (let i = 0; i < level.stars; i++) starsHtml += starIcon;
-
-      return `
-        <div style="flex: 1; opacity: ${opacity}; color: ${color}; transition: all 0.3s ease; display: flex; flex-direction: column; align-items: center; gap: 4px;">
-           <div style="display: flex; gap: 2px; color: ${isCurrent ? 'var(--color-accent-secondary)' : 'currentColor'}">
-             ${starsHtml}
-           </div>
-           <span style="font-family: var(--font-heading); font-weight: ${weight}; font-size: ${fontSize};">${level.title}</span>
         </div>
       `;
-    }).join('');
+    } else {
+      const score = Number(this._result.score) || 3;
+      const wentWell = this._result.went_well || this._result.notes || [];
+      const needsWork = this._result.needs_work || [];
+      const weakAreas = this._result.weak_areas || [];
+      const homework = this._result.homework || "";
+      const summaryNote = this._result.summary_note || "";
+      const estCefr = this._result.estimated_cefr || "";
+      const cefrScore = this._result.cefr_score_0_100 || 0;
+      const levelReasoning = this._result.level_reasoning || "";
 
-    return `
-      <div style="display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: var(--spacing-md); height: 80px;">
-        ${scaleHtml}
-      </div>
-      <p style="font-size: 1rem; opacity: 0.8; font-style: italic; margin-top: var(--spacing-md);">(${descriptions[score.toString()] || ''})</p>
-    `;
+      this.innerHTML = `
+        <div class="container" style="max-width: 880px; padding-bottom: var(--spacing-xxl);">
+          <div class="glass-panel" style="padding: var(--spacing-lg); text-align: center; margin-bottom: var(--spacing-md);">
+            <span style="font-size: 0.78rem; font-weight: 800; padding: 4px 12px; border-radius: 999px; background: var(--color-success-bg); color: var(--color-success);">
+              ${this._result.level || "CEFR"} • Feedback Salvo no Banco de Dados
+            </span>
+            <h2 style="margin: 12px 0 6px 0; font-size: 1.65rem;">
+              ${this._result.title || "Aula Concluída!"}
+            </h2>
+            <div style="font-size: 1.7rem; color: var(--color-warning); letter-spacing: 3px; margin: 6px 0;">
+              ${"★".repeat(score)}${"☆".repeat(Math.max(0, 5 - score))}
+              <span style="font-size: 0.95rem; color: var(--color-text-sub); letter-spacing: normal; margin-left: 8px;">(${score}/5)</span>
+            </div>
+            ${estCefr ? `
+              <div style="margin: 12px auto 0 auto; max-width: 560px; padding: 10px 16px; border-radius: var(--radius-md); background: var(--color-surface-elevated); border: var(--glass-border);">
+                <div style="font-size: 0.88rem; font-weight: 800; color: var(--color-accent-secondary);">
+                  📈 Nível Estimado pela IA: CEFR ${estCefr} (${cefrScore}/100)
+                </div>
+                ${levelReasoning ? `<div style="font-size: 0.84rem; color: var(--color-text-sub); margin-top: 4px;">${levelReasoning}</div>` : ""}
+              </div>
+            ` : ""}
+            ${summaryNote ? `<p style="color: var(--color-text-sub); max-width: 660px; margin: 12px auto 0 auto;">${summaryNote}</p>` : ""}
+          </div>
+
+          <!-- What You Did Well -->
+          <div class="glass-panel" style="padding: var(--spacing-lg); margin-bottom: var(--spacing-md); border-left: 4px solid var(--color-success);">
+            <h4 style="margin: 0 0 10px 0; color: var(--color-success); font-size: 1.05rem;">✅ O Que Você Fez Bem</h4>
+            <ul style="margin: 0; padding-left: 20px; line-height: 1.65; color: var(--color-text-main);">
+              ${wentWell.length
+                ? wentWell.map(item => `<li>${item}</li>`).join("")
+                : `<li>Participou ativamente e manteve o fluxo da conversação.</li>`}
+            </ul>
+          </div>
+
+          <!-- Comparison: You Said vs Natural Form -->
+          <div class="glass-panel" style="padding: var(--spacing-lg); margin-bottom: var(--spacing-md); border-left: 4px solid var(--color-danger);">
+            <h4 style="margin: 0 0 12px 0; color: var(--color-danger); font-size: 1.05rem;">🛠️ Comparativo: "Você disse" vs. "Forma natural"</h4>
+            ${needsWork.length
+              ? `<div style="display: flex; flex-direction: column; gap: 12px;">
+                  ${needsWork.map(item => {
+                    if (typeof item === "string") {
+                      return `<div style="padding: 10px; border-radius: var(--radius-sm); background: var(--color-surface-elevated);">${item}</div>`;
+                    }
+                    return `
+                      <div style="padding: 12px 14px; border-radius: var(--radius-md); background: var(--color-surface-elevated); border: var(--glass-border);">
+                        <div style="font-size: 0.72rem; font-weight: 800; text-transform: uppercase; color: var(--color-warning); margin-bottom: 8px;">
+                          ${item.category || "Correção"}
+                        </div>
+                        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 10px; margin-bottom: 8px;">
+                          <div style="padding: 8px 10px; border-radius: var(--radius-sm); background: var(--color-danger-bg);">
+                            <div style="font-size: 0.7rem; font-weight: 800; color: var(--color-danger); text-transform: uppercase;">Você disse</div>
+                            <div style="font-size: 0.9rem; color: var(--color-text-main);">"${item.quote || ""}"</div>
+                          </div>
+                          <div style="padding: 8px 10px; border-radius: var(--radius-sm); background: var(--color-success-bg);">
+                            <div style="font-size: 0.7rem; font-weight: 800; color: var(--color-success); text-transform: uppercase;">Forma natural</div>
+                            <div style="font-size: 0.9rem; font-weight: 700; color: var(--color-text-main);">"${item.correction || ""}"</div>
+                          </div>
+                        </div>
+                        ${item.explanation ? `<div style="font-size: 0.85rem; color: var(--color-text-sub);">${item.explanation}</div>` : ""}
+                      </div>
+                    `;
+                  }).join("")}
+                </div>`
+              : `<p style="margin: 0; color: var(--color-text-sub);">Excelente! Nenhum erro relevante foi sinalizado nesta sessão.</p>`}
+          </div>
+
+          <!-- Actionable Homework & Tags -->
+          <div class="glass-panel" style="padding: var(--spacing-lg); margin-bottom: var(--spacing-xl); border-left: 4px solid var(--color-accent-secondary);">
+            <h4 style="margin: 0 0 8px 0; color: var(--color-accent-secondary); font-size: 1.05rem;">📌 Tarefa Rápida (5 min) & Foco</h4>
+            ${homework ? `<p style="margin: 0 0 10px 0; color: var(--color-text-main);">${homework}</p>` : ""}
+            <div style="display: flex; flex-wrap: wrap; gap: 6px;">
+              ${weakAreas.map(tag => `
+                <span style="font-size: 0.75rem; padding: 4px 10px; border-radius: 999px; background: var(--color-warning-bg); color: var(--color-warning); font-weight: 700;">
+                  #${tag}
+                </span>
+              `).join("")}
+            </div>
+          </div>
+
+          <div style="display: flex; justify-content: center; gap: 12px; flex-wrap: wrap;">
+            <button id="practice-mistakes-btn" class="btn-primary">🎯 Praticar Esses Pontos Agora</button>
+            <button id="home-btn" class="btn-secondary">Voltar ao Início</button>
+          </div>
+        </div>
+      `;
+    }
+
+    const homeBtn = this.querySelector("#home-btn");
+    if (homeBtn) {
+      homeBtn.addEventListener("click", () => {
+        this.dispatchEvent(new CustomEvent("navigate", {
+          bubbles: true,
+          detail: { view: "missions" },
+        }));
+      });
+    }
+
+    const practiceBtn = this.querySelector("#practice-mistakes-btn");
+    if (practiceBtn) {
+      practiceBtn.addEventListener("click", () => {
+        const weakAreas = (this._result.weak_areas || []).join(", ") || "recent mistakes";
+        this.dispatchEvent(new CustomEvent("navigate", {
+          bubbles: true,
+          detail: {
+            view: "chat",
+            mission: {
+              id: `review-${Date.now()}`,
+              level: this._result.estimated_cefr || this._result.level || "A2",
+              order: 0,
+              module: "Targeted Error Review",
+              title: "Prática Focada nos Pontos da Última Aula",
+              methodology: "PPP",
+              grammar_focus: `Targeted correction on: ${weakAreas}`,
+              communicative_function: "Consolidate corrections from your previous lesson",
+              desc: `Prática rápida para dominar: ${weakAreas}`,
+              warmup_prompt: "Let's quickly practice the key phrases from your last session!",
+              roleplay_scenario: `Focused 1-on-1 drill and mini-roleplay targeting: ${weakAreas}`,
+              objectives: [
+                "Practice the corrected versions of your recent sentences",
+                "Use them naturally in 2–3 new mini-questions",
+                "Build automaticity with zero pressure"
+              ]
+            },
+            language: localStorage.getItem("immergo_language") || "🇬🇧 English",
+            fromLanguage: localStorage.getItem("immergo_from_language") || "🇧🇷 Portuguese",
+            mode: localStorage.getItem("immergo_mode") || "preply_tutor",
+          },
+        }));
+      });
+    }
   }
 }
 
-customElements.define('view-summary', ViewSummary);
+customElements.define("view-summary", ViewSummary);

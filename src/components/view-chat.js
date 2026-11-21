@@ -1,19 +1,3 @@
-/**
- * Copyright 2026 Google LLC
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
-
 import "./audio-visualizer.js";
 import "./live-transcript.js";
 import {
@@ -27,6 +11,17 @@ class ViewChat extends HTMLElement {
   constructor() {
     super();
     this._mission = null;
+    this.transcriptHistory = [];
+    this.currentInputChunk = "";
+    this.currentOutputChunk = "";
+    this.sessionStartTime = null;
+    this.missionCompleted = false;
+    this.isActive = false;
+    this.isMuted = false;
+    this.showTranscript = true;
+    this.slowMode = false;
+    this.audioState = "idle"; // idle | connecting | listening | thinking | speaking | error
+    this._keyHandler = null;
   }
 
   set mission(value) {
@@ -51,647 +46,755 @@ class ViewChat extends HTMLElement {
   }
 
   disconnectedCallback() {
+    if (this._keyHandler) {
+      window.removeEventListener("keydown", this._keyHandler);
+      this._keyHandler = null;
+    }
     if (this.audioStreamer) this.audioStreamer.stop();
     if (this.client) this.client.disconnect();
+    if (this.audioPlayer) this.audioPlayer.interrupt();
+  }
+
+  _flushTranscriptChunks() {
+    if (this.currentInputChunk.trim()) {
+      this.transcriptHistory.push({ speaker: "Student", text: this.currentInputChunk.trim() });
+      this.currentInputChunk = "";
+    }
+    if (this.currentOutputChunk.trim()) {
+      this.transcriptHistory.push({ speaker: "Tutor", text: this.currentOutputChunk.trim() });
+      this.currentOutputChunk = "";
+    }
+  }
+
+  _setAudioState(state, customMsg = "") {
+    this.audioState = state;
+    const orb = this.querySelector("#voice-orb");
+    const badge = this.querySelector("#orb-state-label");
+    const reconnectWrap = this.querySelector("#reconnect-wrap");
+    if (!orb || !badge) return;
+
+    orb.className = `voice-orb state-${state}`;
+    const labels = {
+      idle: "Pronto para começar",
+      connecting: "Conectando com o tutor...",
+      listening: "Ouvindo você (microfone ativo)",
+      muted: "Microfone mutado (Espaço para falar)",
+      thinking: "Tutor pensando...",
+      speaking: "Tutor falando...",
+      error: customMsg || "Conexão interrompida",
+    };
+    badge.textContent = customMsg || labels[state] || "";
+    badge.className = `state-pill pill-${state}`;
+
+    if (reconnectWrap) {
+      reconnectWrap.style.display = state === "error" ? "flex" : "none";
+    }
   }
 
   render() {
-    if (!this._mission) return; // Wait for mission prop
+    if (!this._mission) return;
+
+    const isTutorMode = this._mode === "preply_tutor" || this._mode === "immergo_teacher";
+    this.showTranscript = isTutorMode;
+
+    const levelBadge = this._mission.level || "Free";
+    const methodBadge = this._mission.methodology || "CLT";
+    const objectives = this._mission.objectives || [];
 
     this.innerHTML = `
+      <style>
+        .classroom-shell {
+          height: calc(100vh - 64px);
+          max-width: 1120px;
+          margin: 0 auto;
+          padding: 8px 24px 16px 24px;
+          display: flex;
+          flex-direction: column;
+          justify-content: space-between;
+          gap: 12px;
+        }
 
- <button id="back-to-missions" style="
-            position: absolute;
-            top: var(--spacing-md);
-            left: var(--spacing-md);
-            background: transparent;
-            float: left;
-            border: none;
-            cursor: pointer;
-            padding: 8px;
-            border-radius: 50%;
-            display: flex; align-items: center; justify-content: center;
-            opacity: 0.7;
-            transition: opacity 0.2s;
-            z-index: 10;
-        " onmouseover="this.style.opacity=1" onmouseout="this.style.opacity=0.7">
-            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="12" x2="5" y2="12"></line><polyline points="12 19 5 12 12 5"></polyline></svg>
-        </button>
+        .classroom-topbar {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 12px;
+          flex-wrap: wrap;
+        }
 
-      <div class="container" style="justify-content: space-between; min-height: 100vh; position: relative; padding-bottom: var(--spacing-xl);">
-        
-       
+        .back-pill {
+          display: inline-flex;
+          align-items: center;
+          gap: 6px;
+          padding: 8px 14px;
+          border-radius: var(--radius-md);
+          background: var(--color-surface);
+          color: var(--color-text-main);
+          border: var(--glass-border);
+          font-size: 0.85rem;
+          font-weight: 700;
+        }
+        .back-pill:hover { border-color: var(--color-accent-secondary); }
 
-        <div style="margin-top: var(--spacing-xl); text-align: center;">
-          <h2 style="font-size: 1.5rem; margin-bottom: 2px;">${this._mission.target_role || "Target Person"
-      }</h2>
-          
-          <!-- Language Visibility Pill -->
-          <div style="
-            font-size: 0.85rem; 
-            font-weight: 700; 
-            color: var(--color-text-sub);
-            margin-bottom: var(--spacing-md);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: 8px;
-            background: rgba(0,0,0,0.04);
-            padding: 4px 12px;
-            border-radius: var(--radius-full);
-            width: fit-content;
-            margin-left: auto;
-            margin-right: auto;
-            border: 1px solid rgba(0,0,0,0.05);
-          ">
-            <span>${this._fromLanguage}</span>
-            <span style="opacity: 0.3; font-weight: normal;">➔</span>
-            <span style="color: var(--color-accent-primary);">${this._language}</span>
-          </div>
+        .classroom-main {
+          flex: 1;
+          min-height: 0;
+          display: grid;
+          grid-template-columns: 1fr 1fr;
+          gap: 16px;
+          align-items: stretch;
+        }
 
-          <div style="
-            border-radius: var(--radius-lg);
-            padding: var(--spacing-md) var(--spacing-lg);
-            display: inline-block;
-            margin-top: var(--spacing-md);
-            max-width: 800px;
-          ">
-            <p style="font-size: 1.2rem; font-weight: bold; color: var(--color-accent-secondary); margin: 0;">${this._mission.title
-      }</p>
-            <p style="font-size: 1rem; opacity: 0.9; margin-top: 4px;">${this._mission.desc
-      }</p>
-          </div>
-          ${this._mode === "immergo_teacher"
-        ? `
-          <div style="
-            margin-top: var(--spacing-lg); 
-            font-size: 0.9rem; 
-            background: var(--color-surface); 
-            color: var(--color-accent-primary); 
-            padding: 8px 16px; 
-            border-radius: var(--radius-full); 
-            display: inline-flex; 
-            align-items: center; 
-            gap: 6px;
-            border: 1px solid var(--color-accent-primary);
-            box-shadow: var(--shadow-sm);
-          ">
-            <span>You can ask for <strong>translations</strong> & <strong>explanations</strong> at any time.</span>
-          </div>
-          `
-        : ""
-      }
-        </div>
+        .classroom-main.no-transcript {
+          grid-template-columns: 1fr;
+        }
 
-        <div style="flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: ${this._mode === "immergo_teacher" ? "space-between" : "center"
-      }; width: 100%; gap: ${this._mode === "immergo_teacher" ? "10px" : "40px"
-      };">
-          <!-- Model Visualizer (Top) -->
-          <div style="width: 100%; height: 120px; display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
-             <audio-visualizer id="model-viz"></audio-visualizer>
-          </div>
-          
-          <!-- Transcript (Middle) -->
-          ${this._mode === "immergo_teacher"
-        ? `
-            <div style="width: 100%; height: 250px; margin: 10px 0; position: relative;">
-              <live-transcript></live-transcript>
-            </div>
-          `
-        : ""
-      }
+        @media (max-width: 860px) {
+          .classroom-shell { height: auto; min-height: calc(100vh - 64px); }
+          .classroom-main { grid-template-columns: 1fr; }
+        }
 
-          <!-- User Visualizer (Bottom) -->
-           <div style="width: 100%; height: 120px; display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
-             <audio-visualizer id="user-viz"></audio-visualizer>
-          </div>
-        </div>
+        .orb-stage {
+          background: var(--color-surface);
+          border: var(--glass-border);
+          border-radius: var(--radius-lg);
+          padding: 20px;
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          justify-content: center;
+          gap: 16px;
+          position: relative;
+        }
 
-        <style>
-          .chat-cta-btn {
-            background: var(--color-accent-primary);
-            color: white;
-            padding: 24px 48px;
-            border-radius: var(--radius-lg);
-            width: auto;
-            min-width: 280px;
-            border: 1px solid rgba(255,255,255,0.1);
-            box-shadow: 0 10px 30px -10px rgba(0,0,0,0.5),
-                        0 0 0 1px rgba(255,255,255,0.2) inset;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            cursor: pointer;
-            z-index: 10;
-            transition: all 0.4s cubic-bezier(0.19, 1, 0.22, 1);
-            position: relative;
-            overflow: hidden;
-            font-family: var(--font-body);
-          }
+        .voice-orb {
+          width: 112px;
+          height: 112px;
+          border-radius: 50%;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          font-size: 2.2rem;
+          background: var(--color-surface-elevated);
+          border: 2px solid rgba(255, 255, 255, 0.12);
+          transition: all 0.3s ease;
+        }
 
-          .chat-cta-btn:hover {
-            transform: translateY(-5px) scale(1.02);
-            filter: brightness(1.1);
-            box-shadow: 0 20px 40px -10px rgba(163, 177, 138, 0.4),
-                        0 0 0 2px rgba(255,255,255,0.3) inset;
-          }
+        .voice-orb.state-connecting {
+          border-color: var(--color-warning);
+          animation: orbPulse 1.2s infinite ease-in-out;
+        }
+        .voice-orb.state-listening {
+          border-color: var(--color-success);
+          box-shadow: 0 0 0 8px rgba(34, 197, 94, 0.12), 0 0 28px rgba(34, 197, 94, 0.25);
+          animation: orbBreathe 2s infinite ease-in-out;
+        }
+        .voice-orb.state-muted {
+          border-color: var(--color-text-muted);
+          opacity: 0.7;
+        }
+        .voice-orb.state-thinking {
+          border-color: var(--color-warning);
+          box-shadow: 0 0 0 8px rgba(245, 158, 11, 0.14);
+          animation: orbPulse 0.9s infinite ease-in-out;
+        }
+        .voice-orb.state-speaking {
+          border-color: var(--color-accent-secondary);
+          box-shadow: 0 0 0 10px rgba(52, 211, 153, 0.18), 0 0 36px rgba(52, 211, 153, 0.35);
+          animation: orbSpeak 0.7s infinite alternate ease-in-out;
+        }
+        .voice-orb.state-error {
+          border-color: var(--color-danger);
+          box-shadow: 0 0 0 8px rgba(251, 113, 133, 0.14);
+        }
 
-          .chat-cta-btn:active {
-            transform: translateY(-2px) scale(0.98);
-          }
+        @keyframes orbBreathe {
+          0%, 100% { transform: scale(1); }
+          50% { transform: scale(1.05); }
+        }
+        @keyframes orbPulse {
+          0%, 100% { transform: scale(0.97); opacity: 0.85; }
+          50% { transform: scale(1.04); opacity: 1; }
+        }
+        @keyframes orbSpeak {
+          0% { transform: scale(1); }
+          100% { transform: scale(1.09); }
+        }
 
-          .chat-cta-btn::after {
-            content: '';
-            position: absolute;
-            top: 0; left: 0; width: 200%; height: 100%;
-            background: linear-gradient(115deg, transparent 0%, transparent 45%, rgba(255, 255, 255, 0.3) 50%, transparent 55%, transparent 100%);
-            transform: translateX(-150%) skewX(-15deg);
-            transition: transform 0.6s;
-          }
+        .state-pill {
+          padding: 6px 14px;
+          border-radius: 999px;
+          font-size: 0.84rem;
+          font-weight: 700;
+          background: var(--color-surface-elevated);
+          color: var(--color-text-sub);
+        }
+        .pill-listening { background: var(--color-success-bg); color: var(--color-success); }
+        .pill-thinking, .pill-connecting { background: var(--color-warning-bg); color: var(--color-warning); }
+        .pill-speaking { background: rgba(var(--color-accent-primary-rgb), 0.2); color: var(--color-accent-secondary); }
+        .pill-error { background: var(--color-danger-bg); color: var(--color-danger); }
 
-          .chat-cta-btn:hover::after {
-            transform: translateX(150%) skewX(-15deg);
-          }
+        .transcript-pane {
+          background: var(--color-surface);
+          border: var(--glass-border);
+          border-radius: var(--radius-lg);
+          display: flex;
+          flex-direction: column;
+          min-height: 220px;
+          overflow: hidden;
+        }
 
-          .chat-cta-btn.active {
-            background: var(--color-danger) !important;
-            flex-direction: row !important;
-            gap: 12px;
-          }
-        </style>
+        .call-bar {
+          background: var(--color-surface);
+          border: var(--glass-border);
+          border-radius: var(--radius-lg);
+          padding: 12px 16px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          gap: 10px;
+          flex-wrap: wrap;
+        }
 
-        <div style="margin-bottom: var(--spacing-xxl); display: flex; flex-direction: column; gap: var(--spacing-lg); align-items: center;">
-           
-           <button id="mic-btn" class="chat-cta-btn">
-            <span style="font-size: 1.3rem; font-weight: 800; margin-bottom: 2px; letter-spacing: 0.02em;">Start Mission</span>
-            <span style="font-size: 0.85rem; opacity: 0.9; font-style: italic;">You start the conversation!</span>
+        .ctrl-btn {
+          padding: 10px 16px;
+          border-radius: var(--radius-md);
+          background: var(--color-surface-elevated);
+          color: var(--color-text-main);
+          border: var(--glass-border);
+          font-size: 0.86rem;
+          font-weight: 700;
+          display: inline-flex;
+          align-items: center;
+          gap: 6px;
+        }
+        .ctrl-btn:hover { border-color: var(--color-accent-secondary); }
+        .ctrl-btn.is-muted { background: var(--color-danger-bg); color: var(--color-danger); border-color: var(--color-danger); }
+        .ctrl-btn.is-end { background: #dc2626; color: #ffffff; border: none; }
+        .ctrl-btn.is-end:hover { background: #b91c1c; }
+      </style>
+
+      <div class="classroom-shell">
+        <!-- Top Lesson Bar -->
+        <div class="classroom-topbar">
+          <button id="back-to-missions" class="back-pill" aria-label="Voltar ao Dashboard">
+            <span>←</span>
+            <span>Voltar às Aulas</span>
           </button>
 
-           <p id="connection-status" style="
-             margin-top: var(--spacing-sm);
-             font-size: 0.9rem;
-             font-weight: 700;
-             height: 1.2em;
-             transition: all 0.3s ease;
-             letter-spacing: 0.05em;
-             text-transform: uppercase;
-           "></p>
-        </div>
-
-        <!-- Rate Limit Dialog -->
-        <div id="rate-limit-dialog" class="hidden" style="
-            position: fixed; inset: 0; 
-            background: rgba(0,0,0,0.8); 
-            backdrop-filter: blur(4px);
-            z-index: 20;
-            display: flex; flex-direction: column; align-items: center; justify-content: center;
-        ">
-            <div style="background: white; color: var(--color-text-primary); padding: var(--spacing-xl); border-radius: var(--radius-lg); max-width: 500px; text-align: center; box-shadow: var(--shadow-lg);">
-                <h3 style="margin-bottom: var(--spacing-md); color: var(--color-accent-primary);">Opps, this is too popular!</h3>
-                <p style="margin-bottom: var(--spacing-lg); line-height: 1.5;">
-                    The global quota has been reached. But you can skip the queue by deploying your own version on Google Cloud Run!
-                </p>
-                <div style="display: flex; flex-direction: column; gap: var(--spacing-md); margin-bottom: var(--spacing-lg);">
-                     <a href="https://deploy.cloud.run/?git_repo=https://github.com/ZackAkil/immersive-language-learning-with-live-api&utm_source=github&utm_medium=unpaidsoc&utm_campaign=FY-Q1-global-cloud-ai-starter-apps&utm_content=immergo-app&utm_term=-" target="_blank" style="
-                        display: flex;
-                        align-items: center;
-                        justify-content: center;
-                        gap: 12px;
-                        padding: 16px 32px;
-                        border-radius: var(--radius-md);
-                        color: #1a73e8;
-                        background: rgba(26, 115, 232, 0.05);
-                        text-decoration: none;
-                        font-weight: 800;
-                        box-shadow: 0 4px 15px rgba(26, 115, 232, 0.1);
-                        transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-                        font-size: 1.1rem;
-                        white-space: nowrap;
-                        border: 2px dashed #1a73e8;
-                     " onmouseover="this.style.transform='translateY(-3px)'; this.style.boxShadow='0 8px 25px rgba(26, 115, 232, 0.2)'; this.style.background='rgba(26, 115, 232, 0.1)';" onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='0 4px 15px rgba(26, 115, 232, 0.1)'; this.style.background='rgba(26, 115, 232, 0.05)';" >
-                        <img src="https://www.gstatic.com/images/branding/product/1x/google_cloud_48dp.png" width="24" height="24" alt="Cloud Run Logo" />
-                        Deploy to Cloud Run
-                     </a>
-                </div>
-                <button id="close-rate-limit" style="
-                    background: var(--color-accent-primary);
-                    color: white;
-                    border: none;
-                    padding: var(--spacing-sm) var(--spacing-xl);
-                    border-radius: var(--radius-full);
-                    cursor: pointer;
-                    font-weight: bold;
-                ">Got it</button>
+          <div style="text-align: center; flex: 1; min-width: 240px;">
+            <div style="display: flex; justify-content: center; gap: 6px; margin-bottom: 4px; flex-wrap: wrap;">
+              <span style="font-size: 0.72rem; font-weight: 800; padding: 2px 8px; border-radius: 999px; background: rgba(var(--color-accent-primary-rgb), 0.2); color: var(--color-accent-secondary);">${levelBadge}</span>
+              <span style="font-size: 0.72rem; font-weight: 700; padding: 2px 8px; border-radius: 999px; background: var(--color-surface-elevated); color: var(--color-text-sub);">${methodBadge}</span>
+              <span style="font-size: 0.72rem; font-weight: 700; padding: 2px 8px; border-radius: 999px; background: var(--color-surface-elevated); color: var(--color-text-sub);">${this._fromLanguage || "Portuguese"} ➔ ${this._language || "English"}</span>
             </div>
+            <h2 style="margin: 0; font-size: 1.2rem;">${this._mission.title}</h2>
+          </div>
+
+          <button id="toggle-transcript-btn" class="ctrl-btn" title="Mostrar ou ocultar transcrição (modo listening)">
+            <span>${this.showTranscript ? "🎧 Ocultar Texto" : "📝 Ver Transcrição"}</span>
+          </button>
         </div>
 
+        <!-- Objectives Strip -->
+        ${objectives.length ? `
+          <div style="display: flex; flex-wrap: wrap; justify-content: center; gap: 6px;">
+            ${objectives.map(obj => `
+              <span style="font-size: 0.75rem; padding: 4px 10px; border-radius: 999px; background: var(--color-surface); border: var(--glass-border); color: var(--color-text-sub);">
+                🎯 ${obj}
+              </span>
+            `).join("")}
+          </div>
+        ` : ""}
+
+        <!-- Main Classroom Area -->
+        <div id="classroom-main" class="classroom-main ${this.showTranscript ? "" : "no-transcript"}">
+          <!-- Voice Orb & Visualizers -->
+          <div class="orb-stage">
+            <div style="width: 100%; height: 46px;">
+              <audio-visualizer id="model-viz"></audio-visualizer>
+            </div>
+
+            <div id="voice-orb" class="voice-orb state-idle">🎙️</div>
+            <div id="orb-state-label" class="state-pill">Pronto para começar</div>
+
+            <div id="reconnect-wrap" style="display: none; gap: 8px; align-items: center;">
+              <button id="reconnect-btn" class="btn-primary" style="padding: 8px 16px; font-size: 0.85rem;">🔄 Reconectar Sessão</button>
+            </div>
+
+            <div style="width: 100%; height: 46px;">
+              <audio-visualizer id="user-viz"></audio-visualizer>
+            </div>
+          </div>
+
+          <!-- Collapsible Live Transcript -->
+          <div id="transcript-pane" class="transcript-pane" style="display: ${this.showTranscript ? "flex" : "none"};">
+            <div style="padding: 10px 14px; border-bottom: var(--glass-border); font-size: 0.78rem; font-weight: 700; color: var(--color-text-muted); display: flex; justify-content: space-between;">
+              <span>TRANSCRIÇÃO AO VIVO</span>
+              <span>Modo ${isTutorMode ? "Preply Tutor" : "Imersivo"}</span>
+            </div>
+            <div style="flex: 1; min-height: 0; position: relative;">
+              <live-transcript></live-transcript>
+            </div>
+          </div>
+        </div>
+
+        <!-- Fixed Bottom Video-Call Control Bar -->
+        <div class="call-bar">
+          <button id="start-call-btn" class="btn-primary" style="padding: 12px 28px; font-size: 1rem;">
+            🎙️ Iniciar Aula 1-on-1
+          </button>
+
+          <div id="active-controls" style="display: none; align-items: center; gap: 10px; flex-wrap: wrap; justify-content: center;">
+            <button id="mute-btn" class="ctrl-btn" title="Atalho: Barra de Espaço">
+              <span>🎤 Microfone Ativo (Espaço)</span>
+            </button>
+            <button id="hint-btn" class="ctrl-btn">
+              <span>💡 Pedir Dica / Traduzir</span>
+            </button>
+            <button id="speed-btn" class="ctrl-btn">
+              <span>🐢 Velocidade: Normal</span>
+            </button>
+            <button id="end-call-btn" class="ctrl-btn is-end">
+              <span>⏹ Encerrar e Gerar Feedback</span>
+            </button>
+          </div>
+        </div>
       </div>
     `;
 
-    const rateLimitDialog = this.querySelector("#rate-limit-dialog");
-    const closeRateLimitBtn = this.querySelector("#close-rate-limit");
+    this.bindEvents();
+  }
 
-    closeRateLimitBtn.addEventListener("click", () => {
-      rateLimitDialog.classList.add("hidden");
-      rateLimitDialog.style.display = "none";
-    });
-
-    // Helper to perform navigation
-    const doEndSession = () => {
-      // Cleanup Gemini session
-      if (this.audioStreamer) this.audioStreamer.stop();
-      if (this.client) this.client.disconnect();
-      if (this.audioPlayer) this.audioPlayer.interrupt(); // Stop playback
-
-      // Disconnect visualizers
-      const userViz = this.querySelector("#user-viz");
-      const modelViz = this.querySelector("#model-viz");
-      if (userViz && userViz.disconnect) userViz.disconnect();
-      if (modelViz && modelViz.disconnect) modelViz.disconnect();
-
-      console.log("👋 [App] Session ended by user");
-
-      // Incomplete session
-      const result = {
-        incomplete: true,
-      };
-
-      this.dispatchEvent(
-        new CustomEvent("navigate", {
-          bubbles: true,
-          detail: { view: "summary", result: result },
-        })
-      );
-    };
-
-    // Back Button
+  bindEvents() {
+    const userViz = this.querySelector("#user-viz");
+    const modelViz = this.querySelector("#model-viz");
     const backBtn = this.querySelector("#back-to-missions");
-    backBtn.addEventListener("click", () => {
-      // Stop session if active
+    const toggleTranscriptBtn = this.querySelector("#toggle-transcript-btn");
+    const transcriptPane = this.querySelector("#transcript-pane");
+    const mainGrid = this.querySelector("#classroom-main");
+    const startBtn = this.querySelector("#start-call-btn");
+    const activeControls = this.querySelector("#active-controls");
+    const muteBtn = this.querySelector("#mute-btn");
+    const hintBtn = this.querySelector("#hint-btn");
+    const speedBtn = this.querySelector("#speed-btn");
+    const endBtn = this.querySelector("#end-call-btn");
+    const reconnectBtn = this.querySelector("#reconnect-btn");
+
+    const cleanupMedia = () => {
       if (this.audioStreamer) this.audioStreamer.stop();
       if (this.client) this.client.disconnect();
       if (this.audioPlayer) this.audioPlayer.interrupt();
+      if (userViz?.disconnect) userViz.disconnect();
+      if (modelViz?.disconnect) modelViz.disconnect();
+    };
 
-      const userViz = this.querySelector("#user-viz");
-      const modelViz = this.querySelector("#model-viz");
-      if (userViz && userViz.disconnect) userViz.disconnect();
-      if (modelViz && modelViz.disconnect) modelViz.disconnect();
+    backBtn.addEventListener("click", () => {
+      cleanupMedia();
+      this.dispatchEvent(new CustomEvent("navigate", {
+        bubbles: true,
+        detail: { view: "missions" },
+      }));
+    });
 
-      // Navigate back to mission selector
-      this.dispatchEvent(
-        new CustomEvent("navigate", {
-          bubbles: true,
-          detail: { view: "mission-selector" },
-        })
+    toggleTranscriptBtn.addEventListener("click", () => {
+      this.showTranscript = !this.showTranscript;
+      transcriptPane.style.display = this.showTranscript ? "flex" : "none";
+      mainGrid.classList.toggle("no-transcript", !this.showTranscript);
+      toggleTranscriptBtn.innerHTML = `<span>${this.showTranscript ? "🎧 Ocultar Texto" : "📝 Ver Transcrição"}</span>`;
+    });
+
+    const toggleMute = () => {
+      if (!this.isActive || !this.audioStreamer) return;
+      this.isMuted = !this.isMuted;
+      this.audioStreamer.setMuted(this.isMuted);
+      muteBtn.classList.toggle("is-muted", this.isMuted);
+      muteBtn.innerHTML = this.isMuted
+        ? "<span>🔇 Mutado (Espaço)</span>"
+        : "<span>🎤 Microfone Ativo (Espaço)</span>";
+      if (this.isMuted) {
+        this._setAudioState("muted");
+      } else if (this.audioState === "muted") {
+        this._setAudioState("listening");
+      }
+    };
+
+    muteBtn.addEventListener("click", toggleMute);
+
+    if (this._keyHandler) window.removeEventListener("keydown", this._keyHandler);
+    this._keyHandler = (e) => {
+      if (e.code === "Space" && this.isActive && document.activeElement?.tagName !== "INPUT") {
+        e.preventDefault();
+        toggleMute();
+      }
+    };
+    window.addEventListener("keydown", this._keyHandler);
+
+    hintBtn.addEventListener("click", () => {
+      if (!this.client?.connected) return;
+      this._setAudioState("thinking", "Pedindo dica ao tutor...");
+      this.client.sendTextMessage(
+        `I'm a bit stuck. Please give me a quick hint or natural phrase in ${this._language || "English"} with a brief explanation in ${this._fromLanguage || "Portuguese"}, then let me continue.`
       );
     });
 
-    // Animate visualizer on click
-    const userViz = this.querySelector("#user-viz");
-    const modelViz = this.querySelector("#model-viz");
-    const micBtn = this.querySelector("#mic-btn");
-    const statusEl = this.querySelector("#connection-status");
-    let isSpeaking = false;
+    speedBtn.addEventListener("click", () => {
+      this.slowMode = !this.slowMode;
+      speedBtn.innerHTML = this.slowMode
+        ? "<span>🐢 Velocidade: Mais Devagar</span>"
+        : "<span>🐢 Velocidade: Normal</span>";
+      if (this.client?.connected) {
+        this.client.sendTextMessage(
+          this.slowMode
+            ? "Please speak slightly slower and enunciate clearly from now on."
+            : "You can speak at a natural normal pace now."
+        );
+      }
+    });
 
-    // Initialize Gemini Live
-    this.client = new GeminiLiveAPI();
-    this.audioStreamer = new AudioStreamer(this.client);
-    this.audioPlayer = new AudioPlayer();
+    const doEndSession = async () => {
+      this.isActive = false;
+      this._flushTranscriptChunks();
+      cleanupMedia();
 
-    // Define Mission Complete Tool
-    const completeMissionTool = new FunctionCallDefinition(
-      "complete_mission",
-      "Call this tool when the user has successfully completed the mission objective. Provide a score and feedback.",
-      {
-        type: "OBJECT",
-        properties: {
-          score: {
-            type: "INTEGER",
-            description:
-              "Rating from 1 to 3 based on performance: 1 (Tiro) = Struggled, used frequent English, or needed many hints. 2 (Proficiens) = Good, intelligible but with errors or hesitation. 3 (Peritus) = Excellent, fluent, native-like, no help needed.",
+      if (this.missionCompleted) return;
+
+      const durationSeconds = this.sessionStartTime
+        ? Math.round((Date.now() - this.sessionStartTime) / 1000)
+        : 0;
+
+      if (durationSeconds < 3 && this.transcriptHistory.length === 0) {
+        this.dispatchEvent(new CustomEvent("navigate", {
+          bubbles: true,
+          detail: { view: "summary", result: { incomplete: true } },
+        }));
+        return;
+      }
+
+      this._setAudioState("thinking", "Gerando feedback estruturado e salvando no banco...");
+      endBtn.disabled = true;
+
+      try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 25000);
+        const res = await fetch("/api/lessons/evaluate", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          signal: controller.signal,
+          body: JSON.stringify({
+            lesson_id: String(this._mission.id),
+            level: this._mission.level || "Free",
+            title: this._mission.title,
+            topic: this._mission.custom_topic || this._mission.desc || "",
+            grammar_focus: this._mission.grammar_focus || "",
+            mode: this._mode || "preply_tutor",
+            native_language: this._fromLanguage || "Portuguese",
+            transcript: this.transcriptHistory,
+            duration_seconds: durationSeconds,
+          }),
+        });
+        clearTimeout(timeoutId);
+        const data = await res.json();
+        const rec = data.record || {};
+        this.dispatchEvent(new CustomEvent("navigate", {
+          bubbles: true,
+          detail: {
+            view: "summary",
+            result: {
+              score: rec.score || 3,
+              level: rec.level || this._mission.level || "Free",
+              title: rec.title || this._mission.title,
+              estimated_cefr: rec.estimated_cefr || "",
+              cefr_score_0_100: rec.cefr_score_0_100 || 0,
+              level_reasoning: rec.level_reasoning || "",
+              went_well: rec.went_well || [],
+              needs_work: rec.needs_work || [],
+              weak_areas: rec.weak_areas || [],
+              homework: rec.homework || "",
+              summary_note: rec.summary_note || "",
+            },
           },
-          feedback_pointers: {
-            type: "ARRAY",
-            items: { type: "STRING" },
-            description:
-              "List of 3 constructive feedback points or compliments in English.",
+        }));
+      } catch (err) {
+        console.error("Evaluation failed:", err);
+        this.dispatchEvent(new CustomEvent("navigate", {
+          bubbles: true,
+          detail: { view: "summary", result: { incomplete: true } },
+        }));
+      }
+    };
+
+    endBtn.addEventListener("click", doEndSession);
+
+    const startSession = async (isReconnect = false) => {
+      this._setAudioState("connecting");
+      startBtn.style.display = "none";
+      activeControls.style.display = "flex";
+
+      if (!isReconnect) {
+        this.transcriptHistory = [];
+        this.currentInputChunk = "";
+        this.currentOutputChunk = "";
+        this.missionCompleted = false;
+        this.sessionStartTime = Date.now();
+      }
+
+      this.client = new GeminiLiveAPI();
+      this.audioStreamer = new AudioStreamer(this.client);
+      this.audioPlayer = new AudioPlayer();
+
+      const completeMissionTool = new FunctionCallDefinition(
+        "complete_mission",
+        "Call this tool at the end of the lesson to record the student's structured feedback report in the database.",
+        {
+          type: "OBJECT",
+          properties: {
+            score: { type: "INTEGER", description: "Rating from 1 to 5." },
+            went_well: { type: "ARRAY", items: { type: "STRING" }, description: "2-3 specific compliments." },
+            needs_work: {
+              type: "ARRAY",
+              items: {
+                type: "OBJECT",
+                properties: {
+                  category: { type: "STRING" },
+                  quote: { type: "STRING" },
+                  correction: { type: "STRING" },
+                  explanation: { type: "STRING" },
+                },
+                required: ["category", "quote", "correction", "explanation"],
+              },
+            },
+            weak_areas: { type: "ARRAY", items: { type: "STRING" } },
+            homework: { type: "STRING" },
+            summary_note: { type: "STRING" },
           },
+          required: ["score", "went_well", "needs_work", "weak_areas", "homework", "summary_note"],
         },
-        required: ["score", "feedback_pointers"],
-      },
-      ["score", "feedback_pointers"]
-    );
-
-    completeMissionTool.functionToCall = (args) => {
-      console.log("🏆 [App] Mission Complete Tool Triggered!", args);
-
-      // Play winner sound immediately
-      const winnerSound = new Audio("/winner-bell.mp3");
-      winnerSound.volume = 0.6;
-      winnerSound
-        .play()
-        .catch((e) => console.error("Failed to play winner sound:", e));
-
-      // Map score to level
-      const levels = { 1: "Tiro", 2: "Proficiens", 3: "Peritus" };
-      const level = levels[args.score] || "Proficiens";
-
-      console.log(
-        "⏳ [App] Waiting for final audio to play before ending session..."
+        ["score", "went_well", "needs_work", "weak_areas", "homework", "summary_note"]
       );
 
-      // Delay cleanup to allow the agent's congratulatory message to be heard
-      setTimeout(() => {
-        // Cleanup
-        if (this.audioStreamer) this.audioStreamer.stop();
-        if (this.client) this.client.disconnect();
-        if (this.audioPlayer) this.audioPlayer.interrupt();
+      completeMissionTool.functionToCall = async (args) => {
+        this.missionCompleted = true;
+        this.isActive = false;
+        this._flushTranscriptChunks();
+        const durationSeconds = this.sessionStartTime
+          ? Math.round((Date.now() - this.sessionStartTime) / 1000)
+          : 0;
 
-        // Navigate to summary
-        const result = {
-          score: args.score.toString(),
-          level: level,
-          notes: args.feedback_pointers,
+        new Audio("/winner-bell.mp3").play().catch(() => {});
+
+        const payload = {
+          lesson_id: String(this._mission.id),
+          level: this._mission.level || "Free",
+          title: this._mission.title,
+          topic: this._mission.custom_topic || this._mission.desc || "",
+          grammar_focus: this._mission.grammar_focus || "",
+          mode: this._mode || "preply_tutor",
+          score: Math.max(1, Math.min(5, Number(args.score) || 3)),
+          went_well: args.went_well || [],
+          needs_work: args.needs_work || [],
+          weak_areas: args.weak_areas || [],
+          homework: args.homework || "",
+          summary_note: args.summary_note || "",
+          transcript_summary: this.transcriptHistory.map(t => `${t.speaker}: ${t.text}`).join("\n").slice(0, 2000),
+          duration_seconds: durationSeconds,
         };
 
-        this.dispatchEvent(
-          new CustomEvent("navigate", {
-            bubbles: true,
-            detail: { view: "summary", result: result },
-          })
-        );
-      }, 2500); // 2.5 seconds delay
-    };
-
-    this.client.addFunction(completeMissionTool);
-
-    // Setup client callbacks for logging
-    this.client.onConnectionStarted = () => {
-      console.log("🚀 [Gemini] Connection started");
-    };
-
-    this.client.onOpen = () => {
-      console.log("🔓 [Gemini] WebSocket connection opened");
-    };
-
-    this.client.onReceiveResponse = (response) => {
-      console.log("📥 [Gemini] Received response:", response.type);
-      if (response.type === MultimodalLiveResponseType.AUDIO) {
-        this.audioPlayer.play(response.data);
-      } else if (response.type === MultimodalLiveResponseType.TURN_COMPLETE) {
-        console.log("✅ [Gemini] Turn complete");
-        const transcriptEl = this.querySelector("live-transcript");
-        if (transcriptEl) {
-          transcriptEl.finalizeAll();
-        }
-      } else if (response.type === MultimodalLiveResponseType.TOOL_CALL) {
-        console.log("🛠️ [Gemini] Tool Call received:", response.data);
-        if (response.data.functionCalls) {
-          response.data.functionCalls.forEach((fc) => {
-            this.client.callFunction(fc.name, fc.args);
-          });
-        }
-      } else if (
-        response.type === MultimodalLiveResponseType.INPUT_TRANSCRIPTION
-      ) {
-        const transcriptEl = this.querySelector("live-transcript");
-        if (transcriptEl) {
-          transcriptEl.addInputTranscript(
-            response.data.text,
-            response.data.finished
-          );
-        }
-      } else if (
-        response.type === MultimodalLiveResponseType.OUTPUT_TRANSCRIPTION
-      ) {
-        const transcriptEl = this.querySelector("live-transcript");
-        if (transcriptEl) {
-          transcriptEl.addOutputTranscript(
-            response.data.text,
-            response.data.finished
-          );
-        }
-      }
-    };
-
-    this.client.onError = (error) => {
-      console.error("❌ [Gemini] Error:", error);
-    };
-
-    this.client.onClose = () => {
-      console.log("🔒 [Gemini] Connection closed");
-    };
-
-    micBtn.addEventListener("click", async () => {
-      isSpeaking = !isSpeaking;
-
-      if (isSpeaking) {
-        micBtn.classList.add('active');
-        // Change to Stop/Listening state
-        micBtn.innerHTML = `
-            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect></svg>
-            <span style="font-weight: 800; font-size: 1.1rem; letter-spacing: 0.05em; text-transform: uppercase;">End Mission</span>
-        `;
-      } else {
-        // Was active, so stopping now
-        micBtn.classList.remove('active');
-        doEndSession();
-        return; // Stop here, don't execute start logic
-      }
-
-      if (isSpeaking) {
-        console.log("🎙️ [App] Microphone button clicked: Starting session...");
-        statusEl.textContent = "Connecting...";
-        statusEl.style.color = "var(--color-text-sub)";
-        // Viz active handled by connection now
-
         try {
-          // 0. Configure System Instructions
-          const language = this._language || "French";
-          const fromLanguage = this._fromLanguage || "English";
-          const mode = this._mode || "immergo_immersive";
-          const missionTitle = this._mission
-            ? this._mission.title
-            : "General Conversation";
-          const missionDesc = this._mission ? this._mission.desc : "";
-          const targetRole = this._mission
-            ? this._mission.target_role || "a local native speaker"
-            : "a conversational partner";
+          await fetch("/api/lessons/log", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload),
+          });
+        } catch (e) {
+          console.error("Failed to save lesson log:", e);
+        }
 
-          let systemInstruction = "";
+        setTimeout(() => {
+          cleanupMedia();
+          this.dispatchEvent(new CustomEvent("navigate", {
+            bubbles: true,
+            detail: { view: "summary", result: payload },
+          }));
+        }, 2500);
+      };
 
-          if (mode === "immergo_teacher") {
-            // Teacher Mode Prompt
-            systemInstruction = `
-ROLEPLAY INSTRUCTION:
-You are acting as **${targetRole}**, a native speaker of ${language}.
-The user is a language learner (native speaker of ${fromLanguage}) trying to: "${missionTitle}" (${missionDesc}).
-Your goal is to be a PROACTIVE LANGUAGE MENTOR while staying in character as ${targetRole}.
+      this.client.addFunction(completeMissionTool);
 
-TEACHING PROTOCOL:
-1. **Gentle Corrections**: If the user makes a clear mistake, respond in character first, then briefly provide a friendly correction or a "more natural way to say that" in ${fromLanguage}.
-2. **Vocabulary Boost**: Every few turns, suggest 1-2 relevant words or idioms in ${language} that fit the current situation and explain their meaning in ${fromLanguage}.
-3. **Mini-Checks**: Occasionally (every 3-4 turns), ask the user a quick "How would you say...?" question in ${fromLanguage} related to the mission to test their recall.
-4. **Scaffolding**: If the user is hesitant, provide the start of a sentence in ${language} or give them two options to choose from to keep the momentum.
-5. **Mixed-Language Support**: Use ${fromLanguage} for teaching moments, but always pivot back to ${language} to maintain the immersive feel.
+      this.client.onError = () => {
+        if (!this.missionCompleted) {
+          this._setAudioState("error", "Erro de conexão — clique em Reconectar ou Encerrar");
+        }
+      };
 
-INTERACTION GUIDELINES:
-1. Prioritize the flow of conversation—don't let the teaching feel like a lecture.
-2. Utilize the proactive audio feature: do not respond until the user has clearly finished their thought.
+      this.client.onClose = () => {
+        if (this.isActive && !this.missionCompleted) {
+          this._setAudioState("error", "Conexão encerrada — clique em Reconectar ou Encerrar");
+        }
+      };
 
-MISSION COMPLETION:
-When the user has successfully achieved the mission objective:
-1. Give a warm congratulatory message in ${language}, then translate the praise into ${fromLanguage}.
-2. THEN call the "complete_mission" tool.
-3. Set 'score' to 0 (Zero) as this is a learning-focused practice session.
-4. Provide 3 specific takeaways (grammar tips or new words) in the feedback list in ${fromLanguage}.
-`;
-          } else {
-            // Immersive Mode Prompt (Default)
-            systemInstruction = `
-ROLEPLAY INSTRUCTION:
-You are acting as **${targetRole}**, a native speaker of ${language}.
-The user is a language learner (native speaker of ${fromLanguage}) trying to: "${missionTitle}" (${missionDesc}).
-Your goal is to play your role (${targetRole}) naturally. Do not act as an AI assistant. Act as the person.
-Speak in the accent and tone of the role.
-
-INTERACTION GUIDELINES:
-1. It is up to you if you want to directly speak back, or speak out what you think the user is saying in your native language before responding.
-2. Utilising the proactive audio feature, do not respond until it is necessary (i.e. the user has finished their turn).
-3. Be helpful but strict about language practice. It is just like speaking to a multilingual person.
-4. You cannot proceed without the user speaking the target language (${language}) themselves.
-5. If you need to give feedback, corrections, or translations, use the user's native language (${fromLanguage}).
-
-NO FREE RIDES POLICY:
-If the user asks for help in ${fromLanguage} (e.g., "please can you repeat"), you MUST NOT simply answer.
-Instead, force them to say the phrase in the target language (${language}).
-For example, say: "You mean to say [Insert Translation in ${language}]" (provided in ${fromLanguage}) and wait for them to repeat it.
-Do not continue the conversation until they attempt the phrase in ${language}.
-
-MISSION COMPLETION:
-When the user has successfully achieved the mission objective declared in the scenario:
-1. Speak a brief congratulatory message (in character) and say goodbye.
-2. THEN call the "complete_mission" tool.
-3. Assign a score based on strict criteria: 1 for struggling/English reliance (Tiro), 2 for capable but imperfect (Proficiens), 3 for native-level fluency (Peritus).
-4. Provide 3 specific pointers or compliments in the feedback list (in the user's native language: ${fromLanguage}).
-`;
+      this.client.onReceiveResponse = (response) => {
+        if (response.type === MultimodalLiveResponseType.AUDIO) {
+          this._setAudioState("speaking");
+          this.audioPlayer.play(response.data);
+        } else if (response.type === MultimodalLiveResponseType.TURN_COMPLETE) {
+          this._flushTranscriptChunks();
+          const transcriptEl = this.querySelector("live-transcript");
+          if (transcriptEl) transcriptEl.finalizeAll();
+          if (this.isActive) {
+            this._setAudioState(this.isMuted ? "muted" : "listening");
           }
-
-          console.log(
-            "📝 [App] Setting system instructions for",
-            language,
-            "Mode:",
-            mode
-          );
-          this.client.setSystemInstructions(systemInstruction);
-
-          // Configure Transcription based on Mode
-          if (mode === "immergo_teacher") {
-            this.client.setInputAudioTranscription(true);
-            this.client.setOutputAudioTranscription(true);
-          } else {
-            this.client.setInputAudioTranscription(false);
-            this.client.setOutputAudioTranscription(false);
+        } else if (response.type === MultimodalLiveResponseType.TOOL_CALL) {
+          if (response.data.functionCalls) {
+            response.data.functionCalls.forEach((fc) => {
+              this.client.callFunction(fc.name, fc.args);
+            });
           }
-
-          // 1. Connect to WebSocket
-          console.log("🔌 [App] Connecting to backend...");
-
-          // Execute Recaptcha
-          let token = "";
-          try {
-            token = await this.getRecaptchaToken();
-            console.log("Captcha solved:", token);
-          } catch (err) {
-            console.error("Recaptcha failed:", err);
-            // Start without token? Or fail? The server will reject it.
-            // Let's proceed and let server reject if needed, or stop.
-            // For now, let's stop to be safe.
-            isSpeaking = false;
-            micBtn.classList.remove('active');
-            micBtn.innerHTML = `
-                <span style="font-size: 1.3rem; font-weight: 800; margin-bottom: 2px; letter-spacing: 0.02em;">Start Mission</span>
-                <span style="font-size: 0.85rem; opacity: 0.9; font-style: italic;">You start the conversation!</span>
-            `;
-            userViz.disconnect();
-            modelViz.disconnect();
-            statusEl.textContent = "";
-            return;
+        } else if (response.type === MultimodalLiveResponseType.INPUT_TRANSCRIPTION) {
+          this.currentInputChunk += response.data.text || "";
+          if (this.isActive && this.audioState !== "speaking") {
+            this._setAudioState("thinking");
           }
-
-          await this.client.connect(token);
-
-          // 2. Start Audio Stream
-          console.log("🎤 [App] Starting audio stream...");
-          await this.audioStreamer.start();
-
-          // Connect User Visualizer
-          if (this.audioStreamer.audioContext && this.audioStreamer.source) {
-            userViz.connect(
-              this.audioStreamer.audioContext,
-              this.audioStreamer.source
-            );
+          const transcriptEl = this.querySelector("live-transcript");
+          if (transcriptEl) {
+            transcriptEl.addInputTranscript(response.data.text, response.data.finished);
           }
-
-          // 3. Initialize Audio Player
-          console.log("🔊 [App] Initializing audio player...");
-          await this.audioPlayer.init();
-
-          // Connect Model Visualizer
-          if (this.audioPlayer.audioContext && this.audioPlayer.gainNode) {
-            modelViz.connect(
-              this.audioPlayer.audioContext,
-              this.audioPlayer.gainNode
-            );
-          }
-
-          console.log("✨ [App] Session active!");
-          statusEl.textContent = "Connected and ready to speak";
-          statusEl.style.color = "#4CAF50"; // Success green
-
-          // Play start sound
-          const startSound = new Audio("/start-bell.mp3");
-          startSound.volume = 0.6;
-          startSound
-            .play()
-            .catch((e) => console.error("Failed to play start sound:", e));
-        } catch (err) {
-          console.error("❌ [App] Failed to start session:", err);
-          console.log("Error status:", err.status); // Debug status
-
-          isSpeaking = false;
-          micBtn.classList.remove('active');
-          // Reset button content to "Start Mission"
-          micBtn.innerHTML = `
-              <span style="font-size: 1.3rem; font-weight: 800; margin-bottom: 2px; letter-spacing: 0.02em;">Start Mission</span>
-              <span style="font-size: 0.85rem; opacity: 0.9; font-style: italic;">You start the conversation!</span>
-          `;
-
-          userViz.disconnect();
-          modelViz.disconnect();
-          statusEl.textContent = "";
-
-          if (err.status === 429) {
-            rateLimitDialog.classList.remove("hidden");
-            rateLimitDialog.style.display = "flex";
-          } else {
-            alert("Failed to start session: " + err.message);
+        } else if (response.type === MultimodalLiveResponseType.OUTPUT_TRANSCRIPTION) {
+          this.currentOutputChunk += response.data.text || "";
+          const transcriptEl = this.querySelector("live-transcript");
+          if (transcriptEl) {
+            transcriptEl.addOutputTranscript(response.data.text, response.data.finished);
           }
         }
+      };
+
+      try {
+        const language = this._language || "English";
+        const fromLanguage = this._fromLanguage || "Portuguese";
+        const mode = this._mode || "preply_tutor";
+        const m = this._mission;
+
+        let adaptiveBlock = "No previous lesson history yet. Focus on establishing baseline fluency.";
+        let estimatedLevel = m.level || "A2";
+        try {
+          const profRes = await fetch("/api/lessons/profile");
+          if (profRes.ok) {
+            const profile = await profRes.json();
+            if (profile.estimated_level) estimatedLevel = profile.estimated_level;
+            if (profile.total_lessons > 0) {
+              const topWeak = (profile.top_weak_areas || [])
+                .slice(0, 5)
+                .map(w => `${w.area} (${w.count}x)`)
+                .join(", ");
+              const recentMistakes = (profile.recent_needs_work || []).slice(0, 4).join("; ");
+              adaptiveBlock = `
+STUDENT ADAPTIVE PROFILE (${profile.total_lessons} past lessons, AI-Estimated CEFR: ${estimatedLevel} [${profile.estimated_subscore || 25}/100], Avg Score: ${profile.average_score}/5):
+- Recurring Weak Areas to target: ${topWeak || "none recorded"}
+- Recent specific mistakes to test/re-elicit naturally: ${recentMistakes || "none"}
+- Previous homework: ${profile.recent_homework || "none"}
+INSTRUCTION: Naturally weave 1-2 quick spaced-repetition checks or subtle prompts for these weak areas during Stage 1 and Stage 3!`;
+            }
+          }
+        } catch (e) {
+          console.warn("Could not fetch adaptive profile:", e);
+        }
+
+        const krashenAndSttRules = `
+PEDAGOGICAL FOUNDATION (STEPHEN KRASHEN):
+1. **Comprehensible Input (i + 1)**:
+   - Calibrate your vocabulary, idioms, and sentence complexity to just ONE step above the student's current level (${estimatedLevel}).
+   - Stay 100% understandable through clear context and natural phrasing, while organically introducing 1–2 slightly higher-level expressions per turn.
+2. **Affective Filter Hypothesis (Low-Anxiety Environment)**:
+   - Keep the emotional tone warm, patient, encouraging, and non-judgmental.
+   - NEVER interrupt the student mid-thought or harshly criticize minor slips.
+   - Prioritize **Recasting**: repeat the student's idea naturally using the correct form rather than stopping the flow for grammar lectures.
+   - Validate effort, praise self-corrections, normalize mistakes, and save detailed explicit corrections for brief end-of-turn moments or the final report.
+
+AUDIO / STT CONTEXT AWARENESS (-ed & Unstressed Endings):
+- Live speech recognition often drops unstressed word-final '-ed' (/t/, /d/, /ɪd/) or 's' sounds.
+- If the student's temporal context is clearly past, assume they intended the past tense and do NOT accuse them of forgetting '-ed' unless they explicitly show confusion.`;
+
+        const systemInstruction = mode === "immergo_immersive"
+          ? `
+You are a structured yet natural native ${language} Preply conversation coach in an immersive session.
+Level: ${m.level || "A2+"} | Lesson: "${m.title}" (${m.desc})
+Grammar Focus: ${m.grammar_focus || "Natural fluency"}
+Communicative Function: ${m.communicative_function || m.desc}
+Roleplay Scenario: ${m.roleplay_scenario || m.desc}
+${adaptiveBlock}
+${krashenAndSttRules}
+
+RULES:
+- Speak ONLY ${language}. Actively steer the conversation so the student practices the target grammar/function and speaks 70–80% of the time.
+- When wrapping up, give a brief spoken summary in ${language} and call "complete_mission" with structured feedback in ${fromLanguage}.
+`
+          : `
+You are an active, structured, world-class 1-on-1 **Preply English Teacher** (NOT a passive chat partner!) teaching a ${fromLanguage}-speaking student.
+Lesson: "${m.title}" (CEFR Level: ${m.level || "A2"}, Module: ${m.module || "Core"}, Methodology: ${m.methodology || "PPP"})
+Target Grammar/Structure: ${m.grammar_focus || "Natural fluency"}
+Communicative Function: ${m.communicative_function || m.desc}
+Vocabulary Focus: ${m.vocabulary_focus || "Topic vocabulary"}
+Pronunciation Focus: ${m.pronunciation_focus || "Natural rhythm & stress"}
+Roleplay Scenario: ${m.roleplay_scenario || m.desc}
+Session Objectives: ${(m.objectives || []).join(" | ")}
+
+${adaptiveBlock}
+${krashenAndSttRules}
+
+STRUCTURED 1-ON-1 LESSON FLOW (You lead the pace; student speaks 70–80% of the time!):
+1. **Stage 1 — Warm-up & Adaptive Check-in (2 turns)**: Greet warmly, state today's lesson goal in 1 sentence, and ask "${m.warmup_prompt || "How is your day going?"}" while subtly eliciting 1 weak area.
+2. **Stage 2 — Micro-Presentation & Elicitation (2–3 turns)**: Briefly present today's target structure/phrases (2–3 examples max) and prompt the student to build 1 example sentence.
+3. **Stage 3 — Guided Practice & Intentional Roleplay (main part)**: Actively drive the scenario ("${m.roleplay_scenario || m.desc}") using intentional questions that require "${m.grammar_focus || "today's target"}". Provide scaffolding if stuck.
+4. **Stage 4 — Wrap-up & Verbal Feedback**: Summarize 2 things they did well and 1–2 gentle takeaways, THEN call "complete_mission" with detailed feedback in ${fromLanguage}.
+`;
+
+        this.client.setSystemInstructions(systemInstruction);
+        this.client.setInputAudioTranscription(true);
+        this.client.setOutputAudioTranscription(true);
+
+        const token = await this.getRecaptchaToken();
+        await this.client.connect(token);
+        await this.audioStreamer.start();
+
+        if (this.audioStreamer.audioContext && this.audioStreamer.source) {
+          userViz.connect(this.audioStreamer.audioContext, this.audioStreamer.source);
+        }
+        await this.audioPlayer.init();
+        if (this.audioPlayer.audioContext && this.audioPlayer.gainNode) {
+          modelViz.connect(this.audioPlayer.audioContext, this.audioPlayer.gainNode);
+        }
+
+        this.isActive = true;
+        this.isMuted = false;
+        this._setAudioState("listening");
+
+        if (isReconnect && this.transcriptHistory.length > 0) {
+          const recap = this.transcriptHistory.slice(-4).map(t => `${t.speaker}: ${t.text}`).join(" | ");
+          this.client.sendTextMessage(`We reconnected after a brief drop. Recent context: ${recap}. Please continue smoothly.`);
+        } else {
+          new Audio("/start-bell.mp3").play().catch(() => {});
+        }
+      } catch (err) {
+        console.error("❌ Failed to start session:", err);
+        this.isActive = false;
+        cleanupMedia();
+        this._setAudioState("error", "Falha ao conectar — clique em Reconectar");
       }
+    };
+
+    startBtn.addEventListener("click", () => startSession(false));
+    reconnectBtn.addEventListener("click", () => {
+      cleanupMedia();
+      startSession(true);
     });
   }
 
   async getRecaptchaToken() {
     return new Promise((resolve) => {
-      // Graceful fallback for Simple Mode
       if (typeof grecaptcha === "undefined") {
-        console.warn("⚠️ ReCAPTCHA not loaded (Simple Mode). Proceeding without token.");
         resolve(null);
         return;
       }
-
       try {
         grecaptcha.enterprise.ready(async () => {
           try {
@@ -700,13 +803,11 @@ When the user has successfully achieved the mission objective declared in the sc
               { action: "LOGIN" }
             );
             resolve(t);
-          } catch (e) {
-            console.warn("⚠️ ReCAPTCHA execution failed (Simple Mode fallback):", e);
+          } catch {
             resolve(null);
           }
         });
-      } catch (e) {
-        console.warn("⚠️ ReCAPTCHA ready failed:", e);
+      } catch {
         resolve(null);
       }
     });
