@@ -2,6 +2,10 @@
 
 An interactive, real-time voice English tutoring platform inspired by **Preply**, built on **CLT, PPP, ESA, TBL** methodologies and **Stephen Krashen's** Second Language Acquisition principles (*Comprehensible Input $i+1$* and *Affective Filter*).
 
+<p align="center">
+  <img src="assets/demo.gif" alt="FluentAI Demo — Adaptive Dashboard, Live Voice Classroom, and SM-2 Flashcards" width="90%" />
+</p>
+
 ---
 
 ## Overview & Key Features
